@@ -615,6 +615,376 @@ print_findings_table() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MODULE CHECK — NON-DESTRUCTIVE STATE ASSESSMENT
+# ═══════════════════════════════════════════════════════════════════
+# Returns via globals: CHECK_STATUS ("PASS"|"FAIL"|"MANUAL"|"N/A")
+#                      CHECK_FINDING (human-readable string)
+CHECK_STATUS=""
+CHECK_FINDING=""
+
+check_module() {
+    local mod_id="$1"
+    local check_func="check_${mod_id//-/_}"
+    CHECK_STATUS="FAIL"
+    CHECK_FINDING="Not checked"
+    if declare -f "$check_func" &>/dev/null; then
+        "$check_func"
+    else
+        CHECK_STATUS="N/A"
+        CHECK_FINDING="No check function available"
+    fi
+}
+
+check_disk_encrypt() {
+    if [[ "$OS" == "macos" ]]; then
+        if fdesetup status 2>/dev/null | grep -q "On"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="FileVault enabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="FileVault not enabled"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if lsblk -o NAME,TYPE,FSTYPE 2>/dev/null | grep -q "crypt"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="LUKS encryption detected"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="No disk encryption detected"
+        fi
+    fi
+}
+
+check_firewall_inbound() {
+    if [[ "$OS" == "macos" ]]; then
+        if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -q "enabled\|State = 1\|State = 2"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Firewall active"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Firewall not enabled"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="ufw active"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Firewall not active"
+        fi
+    fi
+}
+
+check_firewall_stealth() {
+    if [[ "$OS" == "macos" ]]; then
+        if /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode 2>/dev/null | grep -q "on"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Stealth mode on"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Stealth mode off"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if iptables -C INPUT -p icmp --icmp-type echo-request -j DROP &>/dev/null 2>&1; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="ICMP echo dropped"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="ICMP echo not blocked"
+        fi
+    fi
+}
+
+check_firewall_outbound() {
+    if [[ "$OS" == "macos" ]]; then
+        if cask_installed lulu; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="LuLu installed"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="No outbound firewall"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if command -v ufw &>/dev/null && ufw status verbose 2>/dev/null | grep -q "deny (outgoing)"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="ufw outbound deny active"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Outbound not restricted"
+        fi
+    fi
+}
+
+check_dns_secure() {
+    if [[ "$OS" == "macos" ]]; then
+        if networksetup -getdnsservers Wi-Fi 2>/dev/null | grep -q "9.9.9.9"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Quad9 DNS configured"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="DNS not set to Quad9"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if (command -v resolvectl &>/dev/null && resolvectl dns 2>/dev/null | grep -q "9.9.9.9") || \
+           ([[ -f /etc/resolv.conf ]] && grep -q "9.9.9.9" /etc/resolv.conf 2>/dev/null); then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Quad9 DNS configured"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="DNS not set to Quad9"
+        fi
+    fi
+}
+
+check_auto_updates() {
+    if [[ "$OS" == "macos" ]]; then
+        if [[ "$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled 2>/dev/null)" == "1" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Automatic updates enabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Automatic updates not enabled"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if command -v unattended-upgrades &>/dev/null || systemctl is-active dnf-automatic.timer &>/dev/null 2>&1; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Automatic updates configured"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Automatic updates not configured"
+        fi
+    fi
+}
+
+check_guest_disable() {
+    if [[ "$OS" == "macos" ]]; then
+        if [[ "$(defaults read /Library/Preferences/com.apple.loginwindow GuestEnabled 2>/dev/null)" == "0" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Guest account disabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Guest account enabled"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if ! id guest &>/dev/null 2>&1; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="No guest account"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Guest account exists"
+        fi
+    fi
+}
+
+check_lock_screen() {
+    if [[ "$OS" == "macos" ]]; then
+        if [[ "$(run_as_user defaults read com.apple.screensaver askForPasswordDelay 2>/dev/null)" == "0" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Immediate password on lock"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Password delay on lock screen"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if command -v gsettings &>/dev/null && [[ "$(run_as_user gsettings get org.gnome.desktop.screensaver lock-enabled 2>/dev/null)" == "true" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Screen lock enabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Screen lock not configured"
+        fi
+    fi
+}
+
+check_hostname_scrub() {
+    if [[ "$OS" == "macos" ]]; then
+        local name; name="$(scutil --get ComputerName 2>/dev/null)"
+        if [[ "$name" == "MacBook" || "$name" == "Mac" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Hostname generic (${name})"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Hostname reveals identity (${name})"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        local name; name="$(hostname 2>/dev/null)"
+        if [[ "$name" == "linux" || "$name" == "localhost" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Hostname generic"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Hostname may reveal identity (${name})"
+        fi
+    fi
+}
+
+check_ssh_harden() {
+    if [[ -f "${REAL_HOME}/.ssh/config" ]] && grep -q "IdentitiesOnly yes" "${REAL_HOME}/.ssh/config" 2>/dev/null; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="SSH hardened (IdentitiesOnly)"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="SSH config not hardened"
+    fi
+}
+
+check_git_harden() {
+    if [[ "$(run_as_user git config --global --get commit.gpgsign 2>/dev/null)" == "true" ]]; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="Git commit signing enabled"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="Git commit signing not enabled"
+    fi
+}
+
+check_telemetry_disable() {
+    if [[ "$OS" == "macos" ]]; then
+        if [[ "$(defaults read com.apple.CrashReporter DialogType 2>/dev/null)" == "none" ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Crash reporter telemetry disabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Crash reporter telemetry active"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if ! systemctl is-active apport &>/dev/null 2>&1; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Telemetry disabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Telemetry services active"
+        fi
+    fi
+}
+
+check_monitoring_tools() {
+    if [[ "$OS" == "macos" ]]; then
+        if cask_installed oversight && cask_installed blockblock; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Objective-See tools installed"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Monitoring tools not installed"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if command -v auditctl &>/dev/null && command -v aide &>/dev/null; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="auditd + aide installed"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="auditd/aide not installed"
+        fi
+    fi
+}
+
+check_permissions_audit() {
+    CHECK_STATUS="MANUAL"; CHECK_FINDING="Requires manual review"
+}
+
+check_browser_basic() {
+    local ff_profile=""
+    if [[ "$OS" == "macos" ]]; then
+        ff_profile=$(find "${REAL_HOME}/Library/Application Support/Firefox/Profiles" -maxdepth 1 -name "*.default-release" -type d 2>/dev/null | head -1)
+    elif [[ "$OS" == "linux" ]]; then
+        ff_profile=$(find "${REAL_HOME}/.mozilla/firefox" -maxdepth 1 -name "*.default-release" -type d 2>/dev/null | head -1)
+    fi
+    if [[ -n "$ff_profile" ]] && [[ -f "${ff_profile}/user.js" ]] && grep -q "toolkit.telemetry.enabled" "${ff_profile}/user.js" 2>/dev/null; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="Firefox hardened"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="Firefox not hardened"
+    fi
+}
+
+check_browser_fingerprint() {
+    local ff_profile=""
+    if [[ "$OS" == "macos" ]]; then
+        ff_profile=$(find "${REAL_HOME}/Library/Application Support/Firefox/Profiles" -maxdepth 1 -name "*.default-release" -type d 2>/dev/null | head -1)
+    elif [[ "$OS" == "linux" ]]; then
+        ff_profile=$(find "${REAL_HOME}/.mozilla/firefox" -maxdepth 1 -name "*.default-release" -type d 2>/dev/null | head -1)
+    fi
+    if [[ -n "$ff_profile" ]] && [[ -f "${ff_profile}/user.js" ]] && grep -q "privacy.resistFingerprinting" "${ff_profile}/user.js" 2>/dev/null; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="Fingerprint resistance enabled"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="Fingerprint resistance not enabled"
+    fi
+}
+
+check_mac_rotate() {
+    if [[ "$OS" == "linux" ]]; then
+        if [[ -f /etc/NetworkManager/conf.d/mac-randomize.conf ]]; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="MAC randomization configured"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="MAC randomization not configured"
+        fi
+    elif [[ "$OS" == "macos" ]]; then
+        CHECK_STATUS="MANUAL"; CHECK_FINDING="Verify MAC rotation in Network settings"
+    fi
+}
+
+check_vpn_killswitch() {
+    if command -v mullvad &>/dev/null; then
+        if mullvad always-require-vpn get 2>/dev/null | grep -qi "enabled\|on"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Mullvad kill switch enabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Mullvad installed, kill switch off"
+        fi
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="Mullvad VPN not installed"
+    fi
+}
+
+check_traffic_obfuscation() {
+    CHECK_STATUS="MANUAL"; CHECK_FINDING="Requires manual verification of DAITA/Tor"
+}
+
+check_metadata_strip() {
+    if command -v exiftool &>/dev/null; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="exiftool installed"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="exiftool not installed"
+    fi
+}
+
+check_dev_isolation() {
+    if [[ "$OS" == "macos" ]] && [[ -d "/Applications/UTM.app" ]]; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="UTM installed"
+    elif command -v docker &>/dev/null; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="Docker available"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="No isolation tools detected"
+    fi
+}
+
+check_audit_script() {
+    if [[ "$OS" == "macos" ]] && [[ -f "${REAL_HOME}/Library/LaunchAgents/com.secure.weekly-audit.plist" ]]; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="Weekly audit scheduled"
+    elif [[ "$OS" == "linux" ]] && crontab -u "${REAL_USER}" -l 2>/dev/null | grep -q "weekly-audit"; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="Weekly audit in crontab"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="No weekly audit scheduled"
+    fi
+}
+
+check_backup_guidance() {
+    CHECK_STATUS="MANUAL"; CHECK_FINDING="Requires manual verification of backup strategy"
+}
+
+check_border_prep() {
+    CHECK_STATUS="MANUAL"; CHECK_FINDING="Requires manual verification of travel protocol"
+}
+
+check_bluetooth_disable() {
+    if [[ "$OS" == "linux" ]]; then
+        if ! systemctl is-active bluetooth &>/dev/null 2>&1; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Bluetooth service disabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Bluetooth service active"
+        fi
+    elif [[ "$OS" == "macos" ]]; then
+        CHECK_STATUS="MANUAL"; CHECK_FINDING="Verify Bluetooth off in System Settings"
+    fi
+}
+
+check_kernel_sysctl() {
+    if [[ "$OS" != "linux" ]]; then
+        CHECK_STATUS="N/A"; CHECK_FINDING="Linux only"; return
+    fi
+    local all_ok=true
+    for param in "kernel.randomize_va_space=2" "fs.suid_dumpable=0" "net.ipv4.conf.all.rp_filter=1" \
+                 "net.ipv4.tcp_syncookies=1" "net.ipv4.conf.all.accept_redirects=0" "net.ipv4.conf.all.accept_source_route=0"; do
+        local key="${param%%=*}" expected="${param#*=}"
+        local current; current="$(sysctl -n "$key" 2>/dev/null)"
+        [[ "$current" != "$expected" ]] && all_ok=false && break
+    done
+    if $all_ok; then
+        CHECK_STATUS="PASS"; CHECK_FINDING="All sysctl parameters hardened"
+    else
+        CHECK_STATUS="FAIL"; CHECK_FINDING="Kernel parameters not fully hardened"
+    fi
+}
+
+check_apparmor_enforce() {
+    if [[ "$OS" == "linux" ]]; then
+        if command -v aa-status &>/dev/null && aa-status 2>/dev/null | grep -q "enforce"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="AppArmor profiles enforcing"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="AppArmor not in enforce mode"
+        fi
+    elif [[ "$OS" == "macos" ]]; then
+        CHECK_STATUS="MANUAL"; CHECK_FINDING="Check App Sandbox entitlements manually"
+    fi
+}
+
+check_boot_security() {
+    if [[ "$OS" == "macos" ]]; then
+        if csrutil status 2>/dev/null | grep -q "enabled"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="SIP enabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="SIP disabled"
+        fi
+    elif [[ "$OS" == "linux" ]]; then
+        if mokutil --sb-state 2>/dev/null | grep -qi "SecureBoot enabled"; then
+            CHECK_STATUS="PASS"; CHECK_FINDING="Secure Boot enabled"
+        else
+            CHECK_STATUS="FAIL"; CHECK_FINDING="Secure Boot not enabled"
+        fi
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # LIVE DETECTION — FALLBACK WHEN NO STATE FILE
 # ═══════════════════════════════════════════════════════════════════
 detect_applied_modules() {
