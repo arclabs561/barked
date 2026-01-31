@@ -1,8 +1,7 @@
-#Requires -RunAsAdministrator
 # ═══════════════════════════════════════════════════════════════════
 # barked.ps1 — Windows security hardening wizard
 # Idempotent, interactive, profile-based system hardening
-# Run: Right-click PowerShell > Run as Administrator > .\barked.ps1
+# Run: .\barked.ps1 (self-elevates when admin modules are needed)
 # ═══════════════════════════════════════════════════════════════════
 
 param(
@@ -14,7 +13,8 @@ param(
     [switch]$Help,
     [switch]$Version,
     [switch]$Update,
-    [switch]$UninstallSelf
+    [switch]$UninstallSelf,
+    [switch]$Elevated
 )
 
 Set-StrictMode -Version Latest
@@ -52,8 +52,9 @@ $script:ModuleMode = "apply"
 $script:RemovePackages = $false
 
 # State file paths
-$script:StateFileSystem = "C:\ProgramData\hardening-state.json"
+$script:StateFileUser = Join-Path $env:APPDATA "barked\state.json"
 $script:StateFileProject = Join-Path (Split-Path $script:ScriptDir) "state\hardening-state.json"
+$script:StateFileLegacy = "C:\ProgramData\hardening-state.json"
 $script:StateData = @{
     version = "1.0.0"
     last_run = ""
@@ -250,7 +251,7 @@ function Pause-Guide {
 # ═══════════════════════════════════════════════════════════════════
 function Read-State {
     $loaded = $false
-    foreach ($path in @($script:StateFileSystem, $script:StateFileProject)) {
+    foreach ($path in @($script:StateFileUser, $script:StateFileProject, $script:StateFileLegacy)) {
         if (Test-Path $path) {
             try {
                 $json = Get-Content $path -Raw | ConvertFrom-Json
@@ -306,11 +307,13 @@ function Write-State {
 
     $json = $output | ConvertTo-Json -Depth 4
 
-    # Write to system location
+    # Write to user location
     try {
-        $json | Out-File -FilePath $script:StateFileSystem -Encoding UTF8 -Force
+        $userDir = Split-Path $script:StateFileUser
+        if (-not (Test-Path $userDir)) { New-Item -ItemType Directory -Path $userDir -Force | Out-Null }
+        $json | Out-File -FilePath $script:StateFileUser -Encoding UTF8 -Force
     } catch {
-        Log-Entry "state" "write" "warn" "Could not write system state: $_"
+        Log-Entry "state" "write" "warn" "Could not write user state: $_"
     }
 
     # Write to project location
@@ -686,18 +689,35 @@ function Interactive-Picker {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# PRIVILEGE CHECK
+# PRIVILEGE MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════
-function Check-Privileges {
+function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-ColorLine "This script requires Administrator privileges." Red
-        Write-ColorLine "Right-click PowerShell > Run as Administrator, then re-run this script." Red
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Request-Elevation {
+    if (Test-IsAdmin) { return }
+    Write-ColorLine "Some hardening steps need Administrator privileges. Requesting elevation..." DarkYellow
+    $argList = @()
+    if ($Uninstall) { $argList += '-Uninstall' }
+    if ($Modify) { $argList += '-Modify' }
+    if ($Clean) { $argList += '-Clean' }
+    if ($Force) { $argList += '-Force' }
+    if ($DryRun) { $argList += '-DryRun' }
+    if ($Help) { $argList += '-Help' }
+    if ($Version) { $argList += '-Version' }
+    if ($Update) { $argList += '-Update' }
+    if ($UninstallSelf) { $argList += '-UninstallSelf' }
+    $argList += '-Elevated'
+    try {
+        Start-Process -FilePath "powershell.exe" -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`" $($argList -join ' ')" -Verb RunAs -Wait
+        exit $LASTEXITCODE
+    } catch {
+        Write-ColorLine "Failed to acquire Administrator privileges." Red
         exit 1
     }
-    Write-Host "  Detected: " -NoNewline
-    Write-ColorLine "Windows $(([System.Environment]::OSVersion.Version))" Green
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -2334,7 +2354,7 @@ function Run-Uninstall {
 
     # Show status
     if ($hasState) {
-        Write-Host "  State file found: " -NoNewline; Write-ColorLine $script:StateFileSystem Green
+        Write-Host "  State file found: " -NoNewline; Write-ColorLine $script:StateFileUser Green
     }
     Write-Host "  Applied modules: " -NoNewline; Write-ColorLine $applied.Count Green
     if ($script:StateData.last_run) {
@@ -2468,7 +2488,7 @@ function Print-UninstallSummary {
     if ($script:CountManual -gt 0) { Write-ColorLine " (see below)" Red } else { Write-Host "" }
     Write-Host ""
     Write-Host "  State files:"
-    Write-Host "    System:  " -NoNewline; Write-ColorLine $script:StateFileSystem DarkYellow
+    Write-Host "    User:    " -NoNewline; Write-ColorLine $script:StateFileUser DarkYellow
     Write-Host "    Project: " -NoNewline; Write-ColorLine $script:StateFileProject DarkYellow
     Write-Host ""
 
@@ -2500,7 +2520,7 @@ function Print-ModifySummary {
     }
     Write-Host ""
     Write-Host "  State files:"
-    Write-Host "    System:  " -NoNewline; Write-ColorLine $script:StateFileSystem DarkYellow
+    Write-Host "    User:    " -NoNewline; Write-ColorLine $script:StateFileUser DarkYellow
     Write-Host "    Project: " -NoNewline; Write-ColorLine $script:StateFileProject DarkYellow
     Write-Host ""
 
@@ -2528,7 +2548,7 @@ function Print-Summary {
     Write-Host "  Profile: $($script:Profile) | OS: Windows | Date: $($script:DATE)"
     Write-Host ""
     Write-Host "  State files:"
-    Write-Host "    System:  " -NoNewline; Write-ColorLine $script:StateFileSystem DarkYellow
+    Write-Host "    User:    " -NoNewline; Write-ColorLine $script:StateFileUser DarkYellow
     Write-Host "    Project: " -NoNewline; Write-ColorLine $script:StateFileProject DarkYellow
     Write-Host ""
 }
@@ -3763,13 +3783,8 @@ function Invoke-Update {
         exit 0
     }
 
-    # Check admin privileges
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-ColorLine "Update requires Administrator privileges. Re-run as Administrator." Red
-        exit 1
-    }
+    # Elevate if needed
+    if (-not (Test-IsAdmin)) { Request-Elevation }
 
     $installDir = "C:\Program Files\Barked"
     $installPath = Join-Path $installDir "barked.ps1"
@@ -3847,13 +3862,8 @@ function Invoke-UninstallSelf {
         exit 1
     }
 
-    # Check admin privileges
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-ColorLine "Uninstall requires Administrator privileges. Re-run as Administrator." Red
-        exit 1
-    }
+    # Elevate if needed
+    if (-not (Test-IsAdmin)) { Request-Elevation }
 
     # Remove barked files
     Remove-Item -Path $installPath -Force -ErrorAction SilentlyContinue
@@ -3937,16 +3947,19 @@ function Main {
     }
 
     Print-Header
-    Check-Privileges
+    Write-Host "  Detected: " -NoNewline
+    Write-ColorLine "Windows $(([System.Environment]::OSVersion.Version))" Green
 
     switch ($script:RunMode) {
         "uninstall" {
+            if (-not (Test-IsAdmin)) { Request-Elevation }
             Run-Uninstall
             Write-Log
             Invoke-PassiveUpdateCheck
             return
         }
         "modify" {
+            if (-not (Test-IsAdmin)) { Request-Elevation }
             Run-Modify
             Write-Log
             Invoke-PassiveUpdateCheck
@@ -3958,12 +3971,14 @@ function Main {
 
             # Menu may have changed RunMode
             if ($script:RunMode -eq "uninstall") {
+                if (-not (Test-IsAdmin)) { Request-Elevation }
                 Run-Uninstall
                 Write-Log
                 Invoke-PassiveUpdateCheck
                 return
             }
             if ($script:RunMode -eq "modify") {
+                if (-not (Test-IsAdmin)) { Request-Elevation }
                 Run-Modify
                 Write-Log
                 Invoke-PassiveUpdateCheck
@@ -3972,6 +3987,17 @@ function Main {
 
             Select-OutputMode
             Build-ModuleList
+
+            # Check if elevation is needed
+            if (-not (Test-IsAdmin) -and -not $Elevated) {
+                $adminModules = @('firewall-inbound','firewall-stealth','dns-secure','auto-updates',
+                                  'guest-disable','hostname-scrub','telemetry-disable')
+                $needsAdmin = $false
+                foreach ($mod in $script:EnabledModules) {
+                    if ($adminModules -contains $mod) { $needsAdmin = $true; break }
+                }
+                if ($needsAdmin) { Request-Elevation }
+            }
 
             Write-Host ""
             Write-Host "  Modules to apply: " -NoNewline; Write-ColorLine $script:TotalModules Green
