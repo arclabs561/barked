@@ -5639,8 +5639,15 @@ safe_rm_contents() {
     real_dir=$(cd "$dir" 2>/dev/null && pwd -P)
     if [[ -z "$real_dir" ]]; then return 1; fi
 
-    local files_removed=0 bytes_freed=0
+    local files_removed=0 bytes_freed=0 files_processed=0
     while IFS= read -r -d '' file; do
+        ((files_processed++))
+
+        # Show progress every 100 files
+        if (( files_processed % 100 == 0 )); then
+            echo -ne "\r  ⟳ Cleaning... ($files_processed files processed)\033[K"
+        fi
+
         local mod_time
         if [[ "$OS" == "macos" ]]; then
             mod_time=$(stat -f '%m' "$file" 2>/dev/null)
@@ -5676,6 +5683,9 @@ safe_rm_contents() {
             clean_log "FAIL" "$file (permission denied)"
         fi
     done < <(find "$real_dir" -not -type l -type f -print0 2>/dev/null)
+
+    # Clear progress line
+    echo -ne "\r\033[K"
 
     if [[ "$use_root" == true ]]; then
         run_as_root find "$real_dir" -mindepth 1 -type d -empty -delete 2>/dev/null
