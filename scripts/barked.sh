@@ -5061,7 +5061,18 @@ clean_picker() {
                 for cat in "${CLEAN_CAT_ORDER[@]}"; do
                     CLEAN_CATEGORIES[$cat]=1
                 done
+                echo ""
                 echo -e "  ${GREEN}✓ All categories selected${NC}"
+                echo ""
+                echo -ne "  ${BOLD}${GREEN}Press Enter to continue (or toggle more):${NC} "
+                read -r continue_input
+                if [[ -z "$continue_input" ]]; then
+                    echo ""
+                    echo -e "  ${GREEN}✓ Categories selected. Proceeding...${NC}"
+                    echo ""
+                    break
+                fi
+                continue
                 ;;
             n)
                 for cat in "${CLEAN_CAT_ORDER[@]}"; do
@@ -5081,9 +5092,6 @@ clean_picker() {
             *)
                 echo -e "  ${RED}Invalid input.${NC}" ;;
         esac
-        echo ""
-        echo -e "${BROWN}(Press Enter to continue with selected categories)${NC}"
-        sleep 0.5
     done
 
     # Populate CLEAN_TARGETS
