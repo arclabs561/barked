@@ -6271,8 +6271,10 @@ run_update() {
     fi
 
     if [[ ! -w "$install_path" ]]; then
-        echo -e "${RED}No write permission to ${install_path}. Try: sudo barked --update${NC}"
-        exit 1
+        acquire_sudo || {
+            echo -e "${RED}Cannot update ${install_path} without admin privileges.${NC}"
+            exit 1
+        }
     fi
 
     local tmp_file
@@ -6295,8 +6297,8 @@ run_update() {
     fi
 
     chmod +x "$tmp_file"
-    mv "$tmp_file" "$install_path" 2>/dev/null || {
-        cp "$tmp_file" "$install_path" 2>/dev/null || {
+    run_as_root mv "$tmp_file" "$install_path" 2>/dev/null || {
+        run_as_root cp "$tmp_file" "$install_path" 2>/dev/null || {
             echo -e "${RED}Failed to replace ${install_path}.${NC}"
             rm -f "$tmp_file"
             exit 1
@@ -6350,11 +6352,13 @@ run_uninstall_self() {
     }
 
     if [[ ! -w "$install_path" ]]; then
-        echo -e "${RED}No write permission to ${install_path}. Try: sudo barked --uninstall-self${NC}"
-        exit 1
+        acquire_sudo || {
+            echo -e "${RED}Cannot remove ${install_path} without admin privileges.${NC}"
+            exit 1
+        }
     fi
 
-    rm -f "$install_path"
+    run_as_root rm -f "$install_path"
     rm -f "${TMPDIR:-/tmp}/barked-update-check-$(id -u)"
     echo -e "${GREEN}barked has been removed from ${install_path}.${NC}"
     exit 0
