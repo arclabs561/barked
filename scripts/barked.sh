@@ -1137,6 +1137,136 @@ except (FileNotFoundError, json.JSONDecodeError, IOError) as e:
     echo ""
 }
 
+# ───────────────────────────────────────────────────────────────────
+# run_scheduled_clean: Execute automatic cleaning (invoked by scheduler)
+# ───────────────────────────────────────────────────────────────────
+run_scheduled_clean() {
+    local lock_file="/tmp/barked-clean.lock"
+    local lock_timeout=7200  # 2 hours in seconds
+    local min_disk_gb=5
+    local min_battery_pct=20
+    local available_gb disk_used_pct battery_pct is_charging
+
+    # 1. Load config and validate enabled status
+    if ! load_scheduled_config; then
+        log "ERROR" "Failed to load scheduled clean config"
+        return 1
+    fi
+
+    if [[ "${SCHED_ENABLED:-false}" != "true" ]]; then
+        log "INFO" "Scheduled cleaning is disabled, skipping run"
+        return 0
+    fi
+
+    # 2. Pre-flight checks: disk space
+    if command -v df &>/dev/null; then
+        available_gb=$(df -h / | awk 'NR==2 {print $4}' | sed 's/[^0-9.]//g')
+        if (( $(echo "$available_gb < $min_disk_gb" | bc -l 2>/dev/null || echo 0) )); then
+            log "WARN" "Low disk space (${available_gb}GB), skipping scheduled clean"
+            return 0
+        fi
+    fi
+
+    # 2b. Pre-flight checks: battery (macOS only)
+    if [[ "$OSTYPE" == "darwin"* ]] && command -v pmset &>/dev/null; then
+        battery_pct=$(pmset -g batt | grep -Eo "\d+%" | tr -d '%' | head -n1)
+        is_charging=$(pmset -g batt | grep -q "AC Power" && echo "yes" || echo "no")
+
+        if [[ "$is_charging" != "yes" ]] && [[ -n "$battery_pct" ]] && (( battery_pct < min_battery_pct )); then
+            log "WARN" "Low battery (${battery_pct}%), skipping scheduled clean"
+            return 0
+        fi
+    fi
+
+    # 3. Acquire lock file (prevent concurrent runs)
+    if [[ -f "$lock_file" ]]; then
+        local lock_age=$(($(date +%s) - $(stat -f %m "$lock_file" 2>/dev/null || stat -c %Y "$lock_file" 2>/dev/null || echo 0)))
+        if (( lock_age < lock_timeout )); then
+            log "INFO" "Another clean is already running (lock age: ${lock_age}s), exiting"
+            return 0
+        else
+            log "WARN" "Stale lock file detected (age: ${lock_age}s), removing"
+            rm -f "$lock_file"
+        fi
+    fi
+
+    echo $$ > "$lock_file"
+    trap 'rm -f "$lock_file"' EXIT
+
+    # 4. Set categories from config
+    if [[ ${#SCHED_CATEGORIES[@]} -eq 0 ]]; then
+        log "ERROR" "No categories configured for scheduled clean"
+        return 1
+    fi
+
+    # Set all categories to 0, then enable only scheduled ones
+    for cat in "${CLEAN_CAT_ORDER[@]}"; do
+        CLEAN_CATEGORIES[$cat]=0
+    done
+    for cat in "${SCHED_CATEGORIES[@]}"; do
+        CLEAN_CATEGORIES[$cat]=1
+    done
+
+    log "INFO" "Starting scheduled clean: categories=${SCHED_CATEGORIES[*]}"
+
+    # 5. Run clean_execute (with FORCE flag to skip confirmation)
+    CLEAN_FORCE=true
+    if ! clean_execute; then
+        log "ERROR" "Scheduled clean failed"
+        return 1
+    fi
+
+    # 6. Calculate totals
+    local total_files=0
+    local total_bytes=0
+
+    if [[ -v CLEAN_RESULT_FILES[@] ]]; then
+        for count in "${CLEAN_RESULT_FILES[@]}"; do
+            total_files=$((total_files + count))
+        done
+    fi
+
+    if [[ -v CLEAN_RESULT_BYTES[@] ]]; then
+        for bytes in "${CLEAN_RESULT_BYTES[@]}"; do
+            total_bytes=$((total_bytes + bytes))
+        done
+    fi
+
+    local total_size_fmt
+    total_size_fmt=$(format_bytes "$total_bytes")
+
+    log "INFO" "Scheduled clean completed: $total_files files, $total_size_fmt freed"
+
+    # 7. Send notification (if enabled)
+    if [[ "${SCHED_NOTIFY:-false}" == "true" ]]; then
+        send_clean_notification "$total_files" "$total_bytes"
+    fi
+
+    # 8. Update last_run timestamp in config
+    if python3 -c "
+import json
+from datetime import datetime
+with open('$SCHED_CLEAN_CONFIG_USER', 'r') as f:
+    config = json.load(f)
+config['last_run'] = datetime.utcnow().isoformat() + 'Z'
+with open('$SCHED_CLEAN_CONFIG_USER', 'w') as f:
+    json.dump(config, f, indent=2)
+" 2>/dev/null; then
+        log "INFO" "Updated last_run timestamp"
+    else
+        log "WARN" "Failed to update last_run timestamp"
+    fi
+
+    return 0
+}
+
+# ───────────────────────────────────────────────────────────────────
+# send_clean_notification: Send notification about clean results (stub)
+# ───────────────────────────────────────────────────────────────────
+send_clean_notification() {
+    echo "  ${BROWN}Notification will be implemented in Task 7${NC}"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # SEVERITY MAP & SCORING
 # ═══════════════════════════════════════════════════════════════════
