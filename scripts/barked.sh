@@ -221,6 +221,10 @@ STATE_FILE_PROJECT="${SCRIPT_DIR}/../state/hardening-state.json"
 STATE_FILE_LEGACY="/etc/hardening-state.json"
 STATE_EXISTS=false
 
+# Scheduled clean config locations
+SCHED_CLEAN_CONFIG_USER="${HOME}/.config/barked/scheduled-clean.json"
+SCHED_CLEAN_CONFIG_PROJECT="${SCRIPT_DIR}/../state/scheduled-clean.json"
+
 declare -A STATE_MODULES=()     # module_id -> status
 declare -A STATE_PREVIOUS=()    # module_id -> previous_value
 declare -A STATE_TIMESTAMPS=()  # module_id -> applied_at
@@ -689,6 +693,68 @@ state_count_applied() {
         [[ "${STATE_MODULES[$mod_id]}" == "applied" ]] && ((count++))
     done
     echo "$count"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# SCHEDULED CLEAN: CONFIG MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════
+load_scheduled_config() {
+    local config_file=""
+
+    if [[ -f "$SCHED_CLEAN_CONFIG_USER" ]]; then
+        config_file="$SCHED_CLEAN_CONFIG_USER"
+    elif [[ -f "$SCHED_CLEAN_CONFIG_PROJECT" ]]; then
+        config_file="$SCHED_CLEAN_CONFIG_PROJECT"
+    else
+        return 1
+    fi
+
+    # Validate JSON structure
+    if ! python3 -c "import json; json.load(open('$config_file'))" 2>/dev/null; then
+        log "ERROR: Invalid config JSON at $config_file"
+        return 1
+    fi
+
+    # Extract values
+    SCHED_ENABLED=$(python3 -c "import json; print(json.load(open('$config_file'))['enabled'])")
+    SCHED_SCHEDULE=$(python3 -c "import json; print(json.load(open('$config_file'))['schedule'])")
+    SCHED_NOTIFY=$(python3 -c "import json; print(json.load(open('$config_file'))['notify'])")
+    SCHED_CATEGORIES=($(python3 -c "import json; print(' '.join(json.load(open('$config_file'))['categories']))"))
+
+    return 0
+}
+
+save_scheduled_config() {
+    local enabled="$1"
+    local schedule="$2"
+    local custom_interval="$3"
+    local notify="$4"
+    shift 4
+    local categories=("$@")
+
+    mkdir -p "$(dirname "$SCHED_CLEAN_CONFIG_USER")" 2>/dev/null
+
+    local cat_json=""
+    for cat in "${categories[@]}"; do
+        cat_json+="\"$cat\","
+    done
+    cat_json="${cat_json%,}"  # Remove trailing comma
+
+    cat > "$SCHED_CLEAN_CONFIG_USER" <<EOCONFIG
+{
+  "enabled": $enabled,
+  "schedule": "$schedule",
+  "custom_interval": "$custom_interval",
+  "categories": [$cat_json],
+  "notify": $notify,
+  "last_run": "",
+  "version": "1.0"
+}
+EOCONFIG
+
+    # Also save to project directory as backup
+    mkdir -p "$(dirname "$SCHED_CLEAN_CONFIG_PROJECT")" 2>/dev/null
+    cp "$SCHED_CLEAN_CONFIG_USER" "$SCHED_CLEAN_CONFIG_PROJECT" 2>/dev/null || true
 }
 
 # ═══════════════════════════════════════════════════════════════════
