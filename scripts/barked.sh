@@ -5017,17 +5017,10 @@ clean_picker() {
 
     local first_display=true
     while true; do
-        # Clear screen and redisplay menu (except first time)
+        # Add visual separator between iterations (except first time)
         if [[ "$first_display" != true ]]; then
-            clear
             echo ""
-            echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
-            echo -e "${GREEN}║${NC}${BOLD}          BARKED SYSTEM CLEANER v${VERSION}           ${NC}${GREEN}║${NC}"
-            echo -e "${GREEN}║${NC}                  macOS / Linux                   ${GREEN}║${NC}"
-            echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
-            echo ""
-            print_section "Select Categories"
-            echo -e "  ${BROWN}Toggle categories, then press Enter to continue.${NC}"
+            echo -e "${BROWN}────────────────────────────────────────────────────${NC}"
             echo ""
         fi
         first_display=false
@@ -5056,10 +5049,9 @@ clean_picker() {
                 sleep 1
                 continue
             fi
-            # Clear screen and show confirmation before proceeding
-            clear
+            # Show confirmation before proceeding
             echo ""
-            echo -e "${GREEN}✓ Categories selected${NC}"
+            echo -e "  ${GREEN}✓ Categories selected. Proceeding...${NC}"
             echo ""
             break
         fi
@@ -5068,22 +5060,30 @@ clean_picker() {
             a)
                 for cat in "${CLEAN_CAT_ORDER[@]}"; do
                     CLEAN_CATEGORIES[$cat]=1
-                done ;;
+                done
+                echo -e "  ${GREEN}✓ All categories selected${NC}"
+                ;;
             n)
                 for cat in "${CLEAN_CAT_ORDER[@]}"; do
                     CLEAN_CATEGORIES[$cat]=0
-                done ;;
+                done
+                echo -e "  ${BROWN}All categories deselected${NC}"
+                ;;
             [1-7])
                 local cat="${CLEAN_CAT_ORDER[$((input - 1))]}"
                 if [[ "${CLEAN_CATEGORIES[$cat]}" == "1" ]]; then
                     CLEAN_CATEGORIES[$cat]=0
+                    echo -e "  ${BROWN}Deselected: ${CLEAN_CAT_NAMES[$cat]}${NC}"
                 else
                     CLEAN_CATEGORIES[$cat]=1
+                    echo -e "  ${GREEN}Selected: ${CLEAN_CAT_NAMES[$cat]}${NC}"
                 fi ;;
             *)
-                echo -e "  ${RED}Invalid input.${NC}"
-                sleep 1 ;;
+                echo -e "  ${RED}Invalid input.${NC}" ;;
         esac
+        echo ""
+        echo -e "${BROWN}(Press Enter to continue with selected categories)${NC}"
+        sleep 0.5
     done
 
     # Populate CLEAN_TARGETS
