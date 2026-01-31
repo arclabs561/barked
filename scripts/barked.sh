@@ -2893,7 +2893,7 @@ select_profile() {
     echo -e "  ${CYAN}[C]${NC} Clean     — System cleaner (caches, logs, privacy traces)"
 
     # Check if schedule exists and show status
-    local schedule_text="Schedule  — Set up automated cleaning schedule"
+    local schedule_text="Schedule — Set up automated cleaning schedule"
     if [[ -f "$SCHED_CLEAN_CONFIG_USER" ]] || [[ -f "$SCHED_CLEAN_CONFIG_PROJECT" ]]; then
         # Try to read the schedule
         if load_scheduled_config 2>/dev/null; then
@@ -2906,7 +2906,7 @@ select_profile() {
                     custom) sched_display="Custom" ;;
                     *) sched_display="$SCHED_SCHEDULE" ;;
                 esac
-                schedule_text="Schedule  — Manage automated cleaning (currently: ${sched_display})"
+                schedule_text="Schedule — Manage automated cleaning (currently: ${sched_display})"
             fi
         fi
     fi
@@ -2926,7 +2926,7 @@ select_profile() {
             4) PROFILE="advanced"; run_questionnaire; break ;;
             m) RUN_MODE="modify"; break ;;
             c) CLEAN_MODE=true; break ;;
-            s) setup_scheduled_clean; return ;;
+            s) setup_scheduled_clean; break ;;
             u) RUN_MODE="uninstall"; break ;;
             q) echo "Exiting."; exit 0 ;;
             *) echo -e "  ${RED}Invalid choice.${NC}" ;;
