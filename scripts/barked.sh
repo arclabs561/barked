@@ -797,6 +797,131 @@ PYEOF
     cp "$SCHED_CLEAN_CONFIG_USER" "$SCHED_CLEAN_CONFIG_PROJECT" 2>/dev/null || true
 }
 
+setup_scheduled_clean() {
+    print_section "Scheduled Cleaning Setup"
+
+    echo -e "  ${BOLD}Configure automatic system cleaning${NC}"
+    echo ""
+
+    # Step 1: Category selection
+    echo -e "  ${BOLD}Step 1/3: Select categories to clean automatically${NC}"
+    echo ""
+    clean_picker
+
+    # Capture selected categories
+    local selected_cats=()
+    for cat in "${CLEAN_CAT_ORDER[@]}"; do
+        if [[ "${CLEAN_CATEGORIES[$cat]}" == "1" ]]; then
+            selected_cats+=("$cat")
+        fi
+    done
+
+    if [[ ${#selected_cats[@]} -eq 0 ]]; then
+        echo -e "  ${RED}No categories selected. Setup cancelled.${NC}"
+        return 1
+    fi
+
+    echo ""
+    echo -e "  ${GREEN}Selected ${#selected_cats[@]} categories${NC}"
+    echo ""
+
+    # Step 2: Schedule frequency
+    echo -e "  ${BOLD}Step 2/3: How often should automated cleaning run?${NC}"
+    echo ""
+    echo -e "  ${GREEN}[1]${NC} Daily (every day at 2:00 AM)"
+    echo -e "  ${GREEN}[2]${NC} Weekly (Sunday at 2:00 AM)"
+    echo -e "  ${GREEN}[3]${NC} Custom (specify cron schedule)"
+    echo ""
+
+    local schedule="" custom_interval=""
+    while true; do
+        echo -ne "  ${BOLD}Choice:${NC} "
+        read -r sched_choice
+        case "${sched_choice}" in
+            1) schedule="daily"; break ;;
+            2) schedule="weekly"; break ;;
+            3)
+                schedule="custom"
+                echo ""
+                echo -e "  ${BOLD}Enter cron schedule (e.g., '0 3 * * *' for daily at 3am):${NC}"
+                echo -ne "  ${BOLD}Cron:${NC} "
+                read -r custom_interval
+                if [[ -z "$custom_interval" ]]; then
+                    echo -e "  ${RED}Invalid cron schedule${NC}"
+                    continue
+                fi
+                # Add basic validation (5 fields)
+                if [[ $(echo "$custom_interval" | wc -w) -ne 5 ]]; then
+                    echo -e "  ${RED}Invalid cron format (must be 5 fields: minute hour day month weekday)${NC}"
+                    continue
+                fi
+                break
+                ;;
+            *) echo -e "  ${RED}Invalid choice. Enter 1-3.${NC}" ;;
+        esac
+    done
+
+    echo ""
+
+    # Step 3: Notification preference
+    echo -e "  ${BOLD}Step 3/3: Show notification when cleaning completes?${NC}"
+    echo -ne "  ${BOLD}[Y/n]:${NC} "
+    read -r notify_input
+    local notify=true
+    [[ "${notify_input,,}" == "n" ]] && notify=false
+
+    echo ""
+
+    # Confirmation summary
+    local sched_display="$schedule"
+    [[ "$schedule" == "daily" ]] && sched_display="Daily at 2:00 AM"
+    [[ "$schedule" == "weekly" ]] && sched_display="Weekly (Sunday 2:00 AM)"
+    [[ "$schedule" == "custom" ]] && sched_display="Custom: $custom_interval"
+
+    # Truncate schedule display if too long
+    if [[ ${#sched_display} -gt 41 ]]; then
+        sched_display="${sched_display:0:38}..."
+    fi
+
+    local cat_names=""
+    for cat in "${selected_cats[@]}"; do
+        cat_names+="${CLEAN_CAT_NAMES[$cat]}, "
+    done
+    cat_names="${cat_names%, }"
+
+    # Truncate if too long to fit in box
+    if [[ ${#cat_names} -gt 41 ]]; then
+        cat_names="${cat_names:0:38}..."
+    fi
+
+    local notify_display="Yes"
+    [[ "$notify" == false ]] && notify_display="No"
+
+    echo -e "  ${BOLD}${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${BOLD}${GREEN}║${NC}      SCHEDULED CLEANING CONFIGURED                       ${BOLD}${GREEN}║${NC}"
+    echo -e "  ${BOLD}${GREEN}╠══════════════════════════════════════════════════════════╣${NC}"
+    printf "  ${GREEN}║${NC} %-56s ${GREEN}║${NC}\n" "Categories: $cat_names"
+    printf "  ${GREEN}║${NC} %-56s ${GREEN}║${NC}\n" "Schedule:   $sched_display"
+    printf "  ${GREEN}║${NC} %-56s ${GREEN}║${NC}\n" "Notify:     $notify_display"
+    echo -e "  ${BOLD}${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    # Save config
+    save_scheduled_config "true" "$schedule" "$custom_interval" "$notify" "${selected_cats[@]}"
+
+    # Install scheduler
+    install_scheduler "$schedule" "$custom_interval"
+
+    echo ""
+    echo -e "  ${GREEN}✓ Scheduled cleaning configured${NC}"
+    echo ""
+}
+
+# Stub for Task 4
+install_scheduler() {
+    echo "  ${BROWN}Scheduler installation will be implemented in Task 4${NC}"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # SEVERITY MAP & SCORING
 # ═══════════════════════════════════════════════════════════════════
