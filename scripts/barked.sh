@@ -421,7 +421,7 @@ declare -A ROOT_MODULES=(
     [firewall-inbound]=1 [firewall-stealth]=1 [dns-secure]=1
     [auto-updates]=1 [guest-disable]=1 [hostname-scrub]=1
     [telemetry-disable]=1 [kernel-sysctl]=1 [apparmor-enforce]=1
-    [bluetooth-disable]=1
+    [bluetooth-disable]=1 [boot-security]=1 [mac-rotate]=1
 )
 
 needs_sudo() {
