@@ -5015,7 +5015,23 @@ clean_picker() {
         CLEAN_CATEGORIES[$cat]=1
     done
 
+    local first_display=true
     while true; do
+        # Clear screen and redisplay menu (except first time)
+        if [[ "$first_display" != true ]]; then
+            clear
+            echo ""
+            echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
+            echo -e "${GREEN}║${NC}${BOLD}          BARKED SYSTEM CLEANER v${VERSION}           ${NC}${GREEN}║${NC}"
+            echo -e "${GREEN}║${NC}                  macOS / Linux                   ${GREEN}║${NC}"
+            echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
+            echo ""
+            print_section "Select Categories"
+            echo -e "  ${BROWN}Toggle categories, then press Enter to continue.${NC}"
+            echo ""
+        fi
+        first_display=false
+
         for i in "${!CLEAN_CAT_ORDER[@]}"; do
             local cat="${CLEAN_CAT_ORDER[$i]}"
             local num=$((i + 1))
@@ -5036,8 +5052,15 @@ clean_picker() {
             done
             if [[ $any -eq 0 ]]; then
                 echo -e "  ${RED}Select at least one category.${NC}"
+                echo ""
+                sleep 1
                 continue
             fi
+            # Clear screen and show confirmation before proceeding
+            clear
+            echo ""
+            echo -e "${GREEN}✓ Categories selected${NC}"
+            echo ""
             break
         fi
 
@@ -5058,9 +5081,9 @@ clean_picker() {
                     CLEAN_CATEGORIES[$cat]=1
                 fi ;;
             *)
-                echo -e "  ${RED}Invalid input.${NC}" ;;
+                echo -e "  ${RED}Invalid input.${NC}"
+                sleep 1 ;;
         esac
-        echo ""
     done
 
     # Populate CLEAN_TARGETS
@@ -5076,10 +5099,17 @@ clean_picker() {
 }
 
 clean_drilldown() {
+    print_section "Fine-Tune Selection"
+    echo -e "  ${BROWN}Optionally drill into categories to toggle individual targets.${NC}"
     echo ""
     echo -ne "  ${BOLD}Drill into individual targets? (y/N):${NC} "
     read -r drill
-    [[ "${drill,,}" != "y" ]] && return
+    if [[ "${drill,,}" != "y" ]]; then
+        echo ""
+        echo -e "  ${GREEN}Proceeding with category-level selection...${NC}"
+        echo ""
+        return
+    fi
 
     for cat in "${CLEAN_CAT_ORDER[@]}"; do
         [[ "${CLEAN_CATEGORIES[$cat]}" != "1" ]] && continue
