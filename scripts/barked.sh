@@ -25,7 +25,12 @@ readonly GITHUB_REPO="sth8pwd5wx-max/barked"
 readonly SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly DATE="$(date +%Y-%m-%d)"
 readonly TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
-readonly LOG_FILE="${SCRIPT_DIR}/../audits/hardening-log-${DATE}.txt"
+if [[ -d "${SCRIPT_DIR}/../audits" ]]; then
+    LOG_FILE="${SCRIPT_DIR}/../audits/hardening-log-${DATE}.txt"
+else
+    mkdir -p "${HOME}/.config/barked/logs"
+    LOG_FILE="${HOME}/.config/barked/logs/hardening-log-${DATE}.txt"
+fi
 
 # ═══════════════════════════════════════════════════════════════════
 # COLORS & FORMATTING
@@ -84,7 +89,12 @@ CLEAN_MODE=false
 CLEAN_FORCE=false
 
 # Clean log
-CLEAN_LOG_FILE="${SCRIPT_DIR}/../audits/clean-log-${DATE}.txt"
+if [[ -d "${SCRIPT_DIR}/../audits" ]]; then
+    CLEAN_LOG_FILE="${SCRIPT_DIR}/../audits/clean-log-${DATE}.txt"
+else
+    mkdir -p "${HOME}/.config/barked/logs"
+    CLEAN_LOG_FILE="${HOME}/.config/barked/logs/clean-log-${DATE}.txt"
+fi
 
 # Clean category toggles (1=selected, 0=not)
 declare -A CLEAN_CATEGORIES=(
@@ -203,8 +213,9 @@ declare -A CLEAN_TARGET_NAMES=(
 CLEAN_CAT_ORDER=(system-caches user-caches browser-data privacy-traces dev-cruft trash-downloads mail-messages)
 
 # State file locations
-STATE_FILE_SYSTEM="/etc/hardening-state.json"
+STATE_FILE_USER="${HOME}/.config/barked/state.json"
 STATE_FILE_PROJECT="${SCRIPT_DIR}/../state/hardening-state.json"
+STATE_FILE_LEGACY="/etc/hardening-state.json"
 STATE_EXISTS=false
 
 declare -A STATE_MODULES=()     # module_id -> status
@@ -357,33 +368,56 @@ detect_os() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# PRIVILEGE CHECK
+# PRIVILEGE MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════
-check_privileges() {
-    if [[ $EUID -ne 0 ]]; then
-        echo ""
-        echo -e "${RED}This script requires root/sudo privileges to apply system changes.${NC}"
-        echo -e "Please re-run: ${BOLD}sudo $0${NC}"
-        echo ""
-        exit 1
-    fi
-    # Preserve the real user for user-level configs
-    if [[ -n "${SUDO_USER:-}" ]]; then
-        REAL_USER="$SUDO_USER"
-        REAL_HOME=$(eval echo "~$SUDO_USER")
-    else
-        REAL_USER="$(whoami)"
-        REAL_HOME="$HOME"
-    fi
+SUDO_KEEPALIVE_PID=""
+
+setup_privileges() {
+    REAL_USER="$(whoami)"
+    REAL_HOME="$HOME"
     export REAL_USER REAL_HOME
 }
 
-run_as_user() {
-    if [[ -n "${SUDO_USER:-}" ]]; then
-        sudo -u "$SUDO_USER" "$@"
-    else
-        "$@"
+acquire_sudo() {
+    # Already acquired
+    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
+        return 0
     fi
+    # Already root (e.g., running in container or as root user)
+    if [[ $EUID -eq 0 ]]; then
+        return 0
+    fi
+    echo ""
+    echo -e "  ${BROWN}Some hardening steps need admin privileges.${NC}"
+    if ! sudo -v 2>/dev/null; then
+        echo -e "  ${RED}Failed to acquire sudo. Some modules may fail.${NC}"
+        return 1
+    fi
+    # Keep sudo alive in the background
+    (while true; do sudo -n -v 2>/dev/null; sleep 50; done) &
+    SUDO_KEEPALIVE_PID=$!
+    trap 'cleanup_sudo' EXIT
+    return 0
+}
+
+cleanup_sudo() {
+    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
+        kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
+        wait "$SUDO_KEEPALIVE_PID" 2>/dev/null
+        SUDO_KEEPALIVE_PID=""
+    fi
+}
+
+run_as_root() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+run_as_user() {
+    "$@"
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -452,8 +486,8 @@ cask_uninstall() {
 # ═══════════════════════════════════════════════════════════════════
 state_read() {
     local state_file=""
-    if [[ -f "$STATE_FILE_SYSTEM" ]]; then
-        state_file="$STATE_FILE_SYSTEM"
+    if [[ -f "$STATE_FILE_LEGACY" ]]; then
+        state_file="$STATE_FILE_LEGACY"
     elif [[ -f "$STATE_FILE_PROJECT" ]]; then
         state_file="$STATE_FILE_PROJECT"
     else
@@ -521,8 +555,8 @@ state_write() {
 
     local write_targets=("$STATE_FILE_PROJECT")
     # Try system path, might fail without write permission
-    if [[ -w "$(dirname "$STATE_FILE_SYSTEM")" ]] || [[ $EUID -eq 0 ]]; then
-        write_targets+=("$STATE_FILE_SYSTEM")
+    if [[ -w "$(dirname "$STATE_FILE_LEGACY")" ]] || [[ $EUID -eq 0 ]]; then
+        write_targets+=("$STATE_FILE_LEGACY")
     fi
 
     python3 - "${write_targets[@]}" << PYWRITE 2>/dev/null
@@ -4427,7 +4461,7 @@ run_uninstall() {
     local applied_count=0
     if state_read; then
         applied_count=$(state_count_applied)
-        echo -e "  State file found: ${BOLD}${STATE_FILE_SYSTEM}${NC}"
+        echo -e "  State file found: ${BOLD}${STATE_FILE_LEGACY}${NC}"
         echo -e "  Applied modules: ${BOLD}${applied_count}${NC}"
         echo -e "  Last run: ${BOLD}${STATE_LAST_RUN}${NC}"
     else
@@ -6283,7 +6317,7 @@ main() {
 
     print_header
     detect_os
-    check_privileges
+    setup_privileges
 
     # ── Audit-only mode: score and exit ──
     if [[ "$AUDIT_MODE" == true ]]; then
