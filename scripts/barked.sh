@@ -573,7 +573,9 @@ state_migrate_legacy() {
         cp "$STATE_FILE_LEGACY" "$STATE_FILE_USER" 2>/dev/null
         if [[ -f "$STATE_FILE_USER" ]]; then
             echo -e "  ${BROWN}Migrated state file to ${STATE_FILE_USER}${NC}"
-            run_as_root rm -f "$STATE_FILE_LEGACY" 2>/dev/null || true
+            # Use sudo -n (non-interactive) so this never prompts;
+            # if credentials aren't cached the old file just stays
+            sudo -n rm -f "$STATE_FILE_LEGACY" 2>/dev/null || true
         fi
     fi
 }
