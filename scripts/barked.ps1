@@ -172,14 +172,14 @@ function Log-Entry {
 
 function Print-Header {
     Write-Host ""
-    Write-ColorLine "╔══════════════════════════════════════════════════╗ Green
+    Write-ColorLine "╔══════════════════════════════════════════════════╗" Green
     Write-Host "║" -ForegroundColor Green -NoNewline
-    Write-Host "        SYSTEM HARDENING WIZARD v$($script:VERSION)           " -ForegroundColor Green -NoNewline
-    Write-ColorLine "║ Green
+    Write-Host "          BARKED HARDENING WIZARD v$($script:VERSION)          " -ForegroundColor Green -NoNewline
+    Write-ColorLine "║" Green
     Write-Host "║" -ForegroundColor Green -NoNewline
-    Write-Host "        Windows                                    " -NoNewline
-    Write-ColorLine "║ Green
-    Write-ColorLine "╚══════════════════════════════════════════════════╝ Green
+    Write-Host "                     Windows                       " -NoNewline
+    Write-ColorLine "║" Green
+    Write-ColorLine "╚══════════════════════════════════════════════════╝" Green
     Write-Host ""
 }
 
@@ -3686,14 +3686,14 @@ function Write-CleanLog {
 # ═══════════════════════════════════════════════════════════════════
 function Invoke-Clean {
     Write-Host ""
-    Write-ColorLine "+-------------------------------------------------+ Green
-    Write-Host "|" -ForegroundColor Green -NoNewline
-    Write-Host "          SYSTEM CLEANER v$($script:VERSION)                 " -ForegroundColor Green -NoNewline
-    Write-ColorLine "| Green
-    Write-Host "|" -ForegroundColor Green -NoNewline
-    Write-Host "          Windows                                  " -NoNewline
-    Write-ColorLine "| Green
-    Write-ColorLine "+-------------------------------------------------+ Green
+    Write-ColorLine "╔══════════════════════════════════════════════════╗" Green
+    Write-Host "║" -ForegroundColor Green -NoNewline
+    Write-Host "          BARKED SYSTEM CLEANER v$($script:VERSION)           " -ForegroundColor Green -NoNewline
+    Write-ColorLine "║" Green
+    Write-Host "║" -ForegroundColor Green -NoNewline
+    Write-Host "                     Windows                       " -NoNewline
+    Write-ColorLine "║" Green
+    Write-ColorLine "╚══════════════════════════════════════════════════╝" Green
 
     Show-CleanPicker
     Show-CleanDrilldown

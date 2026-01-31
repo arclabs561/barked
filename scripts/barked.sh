@@ -241,8 +241,8 @@ log_entry() {
 print_header() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}${BOLD}        SYSTEM HARDENING WIZARD v${VERSION}           ${NC}${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}        macOS / Linux                             ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}${BOLD}          BARKED HARDENING WIZARD v${VERSION}          ${NC}${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}                  macOS / Linux                   ${GREEN}║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -6109,8 +6109,8 @@ write_clean_log() {
 run_clean() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}${BOLD}          SYSTEM CLEANER v${VERSION}                 ${NC}${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}          macOS / Linux                           ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}${BOLD}          BARKED SYSTEM CLEANER v${VERSION}           ${NC}${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}                  macOS / Linux                   ${GREEN}║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
 
     clean_picker
