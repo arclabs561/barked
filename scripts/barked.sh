@@ -486,10 +486,12 @@ cask_uninstall() {
 # ═══════════════════════════════════════════════════════════════════
 state_read() {
     local state_file=""
-    if [[ -f "$STATE_FILE_LEGACY" ]]; then
-        state_file="$STATE_FILE_LEGACY"
+    if [[ -f "$STATE_FILE_USER" ]]; then
+        state_file="$STATE_FILE_USER"
     elif [[ -f "$STATE_FILE_PROJECT" ]]; then
         state_file="$STATE_FILE_PROJECT"
+    elif [[ -f "$STATE_FILE_LEGACY" ]]; then
+        state_file="$STATE_FILE_LEGACY"
     else
         return 1
     fi
@@ -532,6 +534,18 @@ PYREAD
     return 1
 }
 
+state_migrate_legacy() {
+    # Migrate from /etc/hardening-state.json to user space
+    if [[ -f "$STATE_FILE_LEGACY" ]] && [[ ! -f "$STATE_FILE_USER" ]]; then
+        mkdir -p "$(dirname "$STATE_FILE_USER")" 2>/dev/null
+        cp "$STATE_FILE_LEGACY" "$STATE_FILE_USER" 2>/dev/null
+        if [[ -f "$STATE_FILE_USER" ]]; then
+            echo -e "  ${BROWN}Migrated state file to ${STATE_FILE_USER}${NC}"
+            run_as_root rm -f "$STATE_FILE_LEGACY" 2>/dev/null || true
+        fi
+    fi
+}
+
 state_write() {
     if ! command -v python3 &>/dev/null; then
         echo -e "  ${RED}Warning: python3 required for state file. State not saved.${NC}"
@@ -553,11 +567,8 @@ state_write() {
         pkg_lines+="PKG:${pkg}"$'\n'
     done
 
-    local write_targets=("$STATE_FILE_PROJECT")
-    # Try system path, might fail without write permission
-    if [[ -w "$(dirname "$STATE_FILE_LEGACY")" ]] || [[ $EUID -eq 0 ]]; then
-        write_targets+=("$STATE_FILE_LEGACY")
-    fi
+    mkdir -p "$(dirname "$STATE_FILE_USER")" 2>/dev/null
+    local write_targets=("$STATE_FILE_USER" "$STATE_FILE_PROJECT")
 
     python3 - "${write_targets[@]}" << PYWRITE 2>/dev/null
 import json, sys, os
@@ -4461,7 +4472,7 @@ run_uninstall() {
     local applied_count=0
     if state_read; then
         applied_count=$(state_count_applied)
-        echo -e "  State file found: ${BOLD}${STATE_FILE_LEGACY}${NC}"
+        echo -e "  State file found: ${BOLD}${STATE_FILE_USER}${NC}"
         echo -e "  Applied modules: ${BOLD}${applied_count}${NC}"
         echo -e "  Last run: ${BOLD}${STATE_LAST_RUN}${NC}"
     else
@@ -6318,6 +6329,7 @@ main() {
     print_header
     detect_os
     setup_privileges
+    state_migrate_legacy
 
     # ── Audit-only mode: score and exit ──
     if [[ "$AUDIT_MODE" == true ]]; then
