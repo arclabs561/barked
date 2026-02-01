@@ -4401,6 +4401,7 @@ function Print-Help {
     Write-Host "Options:"
     Write-Host "  -Uninstall    Full uninstall — revert all hardening changes"
     Write-Host "  -Modify       Interactive module picker — add or remove individual modules"
+    Write-Host "  -Audit        Score system security without making changes"
     Write-Host "  -Clean        System cleaner — remove caches, logs, browser data, and more"
     Write-Host "  -Force        Skip confirmation prompts (use with -Clean)"
     Write-Host "  -DryRun       Preview changes without applying them (use with -Clean)"
@@ -4411,6 +4412,7 @@ function Print-Help {
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  .\barked.ps1                        Interactive wizard"
+    Write-Host "  .\barked.ps1 -Audit                 Security audit (read-only)"
     Write-Host "  .\barked.ps1 -Clean                 Interactive system cleaner"
     Write-Host "  .\barked.ps1 -Clean -DryRun         Preview what would be cleaned"
     Write-Host "  .\barked.ps1 -Clean -Force          Clean without confirmation"
@@ -4444,6 +4446,15 @@ function Main {
 
     if ($Clean) {
         Invoke-Clean
+        Invoke-PassiveUpdateCheck
+        exit 0
+    }
+
+    if ($Audit) {
+        Print-Header
+        Write-Host "  Detected: " -NoNewline
+        Write-ColorLine "Windows $(([System.Environment]::OSVersion.Version))" Green
+        Run-Audit
         Invoke-PassiveUpdateCheck
         exit 0
     }
