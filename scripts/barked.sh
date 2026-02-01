@@ -7183,21 +7183,23 @@ main() {
     fi
 
     # ── Scheduled clean mode (non-interactive) ──
-    if [[ "$CLEAN_SCHEDULED" == "true" ]]; then
+    if [[ "$CLEAN_SCHEDULED" == true ]]; then
         run_scheduled_clean
         exit $?
     fi
 
     # ── Schedule setup mode ──
-    if [[ "$CLEAN_SCHEDULE_SETUP" == "true" ]]; then
+    if [[ "$CLEAN_SCHEDULE_SETUP" == true ]]; then
         setup_scheduled_clean
-        exit 0
+        check_update_passive
+        exit $?
     fi
 
     # ── Unschedule mode ──
-    if [[ "$CLEAN_UNSCHEDULE" == "true" ]]; then
+    if [[ "$CLEAN_UNSCHEDULE" == true ]]; then
         unschedule_clean
-        exit 0
+        check_update_passive
+        exit $?
     fi
 
     # ── Auto (non-interactive) mode ──
