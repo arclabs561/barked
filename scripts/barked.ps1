@@ -14,7 +14,8 @@ param(
     [switch]$Version,
     [switch]$Update,
     [switch]$UninstallSelf,
-    [switch]$Elevated
+    [switch]$Elevated,
+    [switch]$Audit
 )
 
 Set-StrictMode -Version Latest
@@ -50,6 +51,11 @@ $script:ModuleResult = ""
 $script:RunMode = "harden"
 $script:ModuleMode = "apply"
 $script:RemovePackages = $false
+
+# Audit mode globals
+$script:FindingsStatus = @()
+$script:FindingsModule = @()
+$script:FindingsMessage = @()
 
 # State file paths
 $script:StateFileUser = Join-Path $env:APPDATA "barked\state.json"
