@@ -494,6 +494,66 @@ function Detect-AppliedModules {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# AUDIT: SEVERITY & SCORING
+# ═══════════════════════════════════════════════════════════════════
+$script:ModuleSeverity = @{
+    'disk-encrypt' = 'CRITICAL'; 'firewall-inbound' = 'CRITICAL'
+    'auto-updates' = 'CRITICAL'; 'lock-screen' = 'CRITICAL'
+    'firewall-stealth' = 'HIGH'; 'firewall-outbound' = 'HIGH'
+    'dns-secure' = 'HIGH'; 'ssh-harden' = 'HIGH'
+    'guest-disable' = 'HIGH'; 'telemetry-disable' = 'HIGH'
+    'hostname-scrub' = 'MEDIUM'; 'git-harden' = 'MEDIUM'
+    'browser-basic' = 'MEDIUM'; 'monitoring-tools' = 'MEDIUM'
+    'permissions-audit' = 'MEDIUM'
+    'browser-fingerprint' = 'LOW'; 'mac-rotate' = 'LOW'
+    'vpn-killswitch' = 'LOW'; 'traffic-obfuscation' = 'LOW'
+    'metadata-strip' = 'LOW'; 'dev-isolation' = 'LOW'
+    'audit-script' = 'LOW'; 'backup-guidance' = 'LOW'
+    'border-prep' = 'LOW'; 'bluetooth-disable' = 'LOW'
+}
+
+$script:ModuleSeverityWeight = @{
+    'CRITICAL' = 10; 'HIGH' = 7; 'MEDIUM' = 4; 'LOW' = 2
+}
+
+function Get-SeverityWeight {
+    param([string]$ModId)
+    $sev = $script:ModuleSeverity[$ModId]
+    if (-not $sev) { $sev = 'LOW' }
+    return $script:ModuleSeverityWeight[$sev]
+}
+
+function Calculate-Score {
+    param([string[]]$AllMods, [string[]]$PassingMods)
+    $totalWeight = 0; $appliedWeight = 0
+    $totalCount = 0; $appliedCount = 0
+    $passSet = @{}
+    foreach ($m in $PassingMods) { $passSet[$m] = $true }
+    foreach ($modId in $AllMods) {
+        $w = Get-SeverityWeight $modId
+        $totalWeight += $w
+        $totalCount++
+        if ($passSet.ContainsKey($modId)) {
+            $appliedWeight += $w
+            $appliedCount++
+        }
+    }
+    $pct = 0
+    if ($totalWeight -gt 0) { $pct = [math]::Floor(($appliedWeight * 100) / $totalWeight) }
+    return @{
+        AppliedWeight = $appliedWeight; TotalWeight = $totalWeight
+        Percentage = $pct; AppliedCount = $appliedCount; TotalCount = $totalCount
+    }
+}
+
+function Record-Finding {
+    param([string]$Status, [string]$ModId, [string]$Message)
+    $script:FindingsStatus += $Status
+    $script:FindingsModule += $ModId
+    $script:FindingsMessage += $Message
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PACKAGE UNINSTALL HELPER
 # ═══════════════════════════════════════════════════════════════════
 function Uninstall-Pkg {
