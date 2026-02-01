@@ -7182,6 +7182,24 @@ main() {
         exit 0
     fi
 
+    # ── Scheduled clean mode (non-interactive) ──
+    if [[ "$CLEAN_SCHEDULED" == "true" ]]; then
+        run_scheduled_clean
+        exit $?
+    fi
+
+    # ── Schedule setup mode ──
+    if [[ "$CLEAN_SCHEDULE_SETUP" == "true" ]]; then
+        setup_scheduled_clean
+        exit 0
+    fi
+
+    # ── Unschedule mode ──
+    if [[ "$CLEAN_UNSCHEDULE" == "true" ]]; then
+        unschedule_clean
+        exit 0
+    fi
+
     # ── Auto (non-interactive) mode ──
     if [[ "$AUTO_MODE" == true ]]; then
         PROFILE="$AUTO_PROFILE"
