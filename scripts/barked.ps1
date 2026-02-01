@@ -18,7 +18,10 @@ param(
     [switch]$Audit,
     [switch]$CleanSchedule,
     [switch]$CleanUnschedule,
-    [switch]$CleanScheduled
+    [switch]$CleanScheduled,
+    [switch]$Auto,
+    [string]$Profile,
+    [switch]$Quiet
 )
 
 Set-StrictMode -Version Latest
@@ -54,6 +57,7 @@ $script:ModuleResult = ""
 $script:RunMode = "harden"
 $script:ModuleMode = "apply"
 $script:RemovePackages = $false
+$script:QuietMode = $false
 
 # Audit mode globals
 $script:FindingsStatus = @()
