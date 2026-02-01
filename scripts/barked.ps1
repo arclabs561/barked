@@ -4862,6 +4862,36 @@ function Main {
         exit 0
     }
 
+    if ($Auto) {
+        if (-not $script:QuietMode) {
+            Print-Header
+            Write-Host "  Detected: " -NoNewline
+            Write-ColorLine "Windows $(([System.Environment]::OSVersion.Version))" Green
+        }
+
+        $script:Profile = $Profile
+        Build-ModuleList
+
+        # Check if elevation is needed
+        if (-not (Test-IsAdmin) -and -not $Elevated) {
+            $adminModules = @('firewall-inbound','firewall-stealth','dns-secure','auto-updates',
+                              'guest-disable','hostname-scrub','telemetry-disable')
+            $needsAdmin = $false
+            foreach ($mod in $script:EnabledModules) {
+                if ($adminModules -contains $mod) { $needsAdmin = $true; break }
+            }
+            if ($needsAdmin) { Request-Elevation }
+        }
+
+        Run-AllModules
+        Write-State
+        Print-Summary
+        Write-Log
+        $exitCode = 0
+        if ($script:CountFailed -gt 0) { $exitCode = 1 }
+        exit $exitCode
+    }
+
     Print-Header
     Write-Host "  Detected: " -NoNewline
     Write-ColorLine "Windows $(([System.Environment]::OSVersion.Version))" Green
