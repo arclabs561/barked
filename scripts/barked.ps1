@@ -835,6 +835,67 @@ function Check-border-prep {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# AUDIT: DISPLAY
+# ═══════════════════════════════════════════════════════════════════
+
+function Print-FindingsTable {
+    param([string[]]$ModList)
+
+    Write-Host ""
+    Write-Host ("  {0,-10} {1,-10} {2,-22} {3}" -f "Status", "Severity", "Module", "Finding") -ForegroundColor White
+    Write-Host ("  {0,-10} {1,-10} {2,-22} {3}" -f "------", "--------", "--------------------", "-------") -ForegroundColor DarkYellow
+
+    $sevOrder = @("CRITICAL", "HIGH", "MEDIUM", "LOW")
+
+    foreach ($sev in $sevOrder) {
+        foreach ($modId in $ModList) {
+            if ($script:ModuleSeverity[$modId] -ne $sev) { continue }
+
+            # Find this module's finding
+            $idx = -1
+            for ($i = 0; $i -lt $script:FindingsModule.Count; $i++) {
+                if ($script:FindingsModule[$i] -eq $modId) { $idx = $i; break }
+            }
+            if ($idx -eq -1) { continue }
+
+            $status = $script:FindingsStatus[$idx]
+            $finding = $script:FindingsMessage[$idx]
+
+            switch ($status) {
+                "PASS"   { $icon = "✓"; $color = "Green" }
+                "FAIL"   { $icon = "✗"; $color = "Red" }
+                "MANUAL" { $icon = "~"; $color = "Red" }
+                "SKIP"   { $icon = "○"; $color = "DarkYellow" }
+                default  { $icon = "○"; $color = "DarkYellow" }
+            }
+
+            Write-Host "  " -NoNewline
+            Write-Host ("{0,-10}" -f "$icon $status") -ForegroundColor $color -NoNewline
+            Write-Host ("{0,-10} {1,-22} {2}" -f $sev, $modId, $finding)
+        }
+    }
+    Write-Host ""
+}
+
+function Print-ScoreBar {
+    param([int]$Pct)
+    $width = 20
+    $filled = [math]::Floor(($Pct * $width) / 100)
+    $empty = $width - $filled
+    $bar = ("█" * $filled) + ("░" * $empty)
+
+    if ($Pct -ge 80) { $color = "Green" }
+    elseif ($Pct -ge 50) { $color = "DarkYellow" }
+    else { $color = "Red" }
+
+    Write-Host "  Hardening Score: " -NoNewline -ForegroundColor White
+    Write-Host "$Pct/100" -ForegroundColor $color -NoNewline
+    Write-Host " [" -NoNewline
+    Write-Host $bar -ForegroundColor $color -NoNewline
+    Write-Host "]"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PACKAGE UNINSTALL HELPER
 # ═══════════════════════════════════════════════════════════════════
 function Uninstall-Pkg {
