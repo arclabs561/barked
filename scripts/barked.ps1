@@ -15,7 +15,10 @@ param(
     [switch]$Update,
     [switch]$UninstallSelf,
     [switch]$Elevated,
-    [switch]$Audit
+    [switch]$Audit,
+    [switch]$CleanSchedule,
+    [switch]$CleanUnschedule,
+    [switch]$CleanScheduled
 )
 
 Set-StrictMode -Version Latest
@@ -99,6 +102,11 @@ $script:CleanScanBytes = @{}
 $script:CleanResultFiles = @{}
 $script:CleanResultBytes = @{}
 $script:CleanResultStatus = @{}
+# Scheduled clean config paths
+$script:SchedConfigUser = Join-Path $env:APPDATA "barked\scheduled-clean.json"
+$script:SchedConfigProject = Join-Path (Split-Path $script:ScriptDir) "state\scheduled-clean.json"
+$script:SchedTaskName = "BarkedScheduledClean"
+$script:CleanForce = $false
 $script:CleanLogEntries = @()
 
 $script:CleanCatOrder = @('system-caches','user-caches','browser-data','privacy-traces','dev-cruft','trash-downloads','mail-messages')
