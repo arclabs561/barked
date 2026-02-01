@@ -18,7 +18,10 @@ param(
     [switch]$Audit,
     [switch]$CleanSchedule,
     [switch]$CleanUnschedule,
-    [switch]$CleanScheduled
+    [switch]$CleanScheduled,
+    [switch]$Auto,
+    [string]$Profile,
+    [switch]$Quiet
 )
 
 Set-StrictMode -Version Latest
@@ -54,6 +57,7 @@ $script:ModuleResult = ""
 $script:RunMode = "harden"
 $script:ModuleMode = "apply"
 $script:RemovePackages = $false
+$script:QuietMode = $false
 
 # Audit mode globals
 $script:FindingsStatus = @()
@@ -534,6 +538,7 @@ function Log-Entry {
 }
 
 function Print-Header {
+    if ($script:QuietMode) { return }
     Write-Host ""
     Write-ColorLine "╔══════════════════════════════════════════════════╗" Green
     Write-Host "║" -ForegroundColor Green -NoNewline
@@ -555,6 +560,7 @@ function Print-Section {
 
 function Print-Status {
     param([int]$Num, [int]$Total, [string]$Desc, [string]$Status)
+    if ($script:QuietMode) { return }
     switch ($Status) {
         "applied"  { Write-Host "  " -NoNewline; Write-Color "✓" Green; Write-Host " [$Num/$Total] $Desc " -NoNewline; Write-ColorLine "(applied)" DarkYellow }
         "skipped"  { Write-Host "  " -NoNewline; Write-Color "○" Green; Write-Host " [$Num/$Total] $Desc " -NoNewline; Write-ColorLine "(already applied)" DarkYellow }
@@ -1196,6 +1202,7 @@ function Check-border-prep {
 
 function Print-FindingsTable {
     param([string[]]$ModList)
+    if ($script:QuietMode) { return }
 
     Write-Host ""
     Write-Host ("  {0,-10} {1,-10} {2,-22} {3}" -f "Status", "Severity", "Module", "Finding") -ForegroundColor White
@@ -1235,6 +1242,7 @@ function Print-FindingsTable {
 
 function Print-ScoreBar {
     param([int]$Pct)
+    if ($script:QuietMode) { return }
     $width = 20
     $filled = [math]::Floor(($Pct * $width) / 100)
     $empty = $width - $filled
@@ -1849,7 +1857,7 @@ function Run-Module {
 }
 
 function Run-AllModules {
-    Print-Section "Applying Hardening ($($script:TotalModules) modules)"
+    if (-not $script:QuietMode) { Print-Section "Applying Hardening ($($script:TotalModules) modules)" }
     foreach ($mod in $script:EnabledModules) {
         Run-Module $mod
     }
@@ -3391,6 +3399,7 @@ function Print-ModifySummary {
 # OUTPUT: SUMMARY & REPORTS
 # ═══════════════════════════════════════════════════════════════════
 function Print-Summary {
+    if ($script:QuietMode) { return }
     Write-Host ""
     Write-ColorLine "═══════════════════════════════════════════════════" Green
     Write-ColorLine "  Hardening Complete" Green
@@ -4763,6 +4772,9 @@ function Print-Help {
     Write-Host "  -CleanUnschedule  Remove scheduled cleaning"
     Write-Host "  -Force        Skip confirmation prompts (use with -Clean)"
     Write-Host "  -DryRun       Preview changes without applying them (use with -Clean)"
+    Write-Host "  -Auto         Run non-interactively (requires -Profile)"
+    Write-Host "  -Profile <name> Set security profile: standard, high, paranoid"
+    Write-Host "  -Quiet        Suppress console output (requires -Auto or -Audit)"
     Write-Host "  -Help         Show this help message"
     Write-Host "  -Version        Show version and exit"
     Write-Host "  -Update         Update barked to the latest version"
@@ -4775,6 +4787,7 @@ function Print-Help {
     Write-Host "  .\barked.ps1 -Clean -DryRun         Preview what would be cleaned"
     Write-Host "  .\barked.ps1 -Clean -Force          Clean without confirmation"
     Write-Host "  .\barked.ps1 -CleanSchedule          Set up recurring clean"
+    Write-Host "  .\barked.ps1 -Auto -Profile standard  Non-interactive hardening"
     Write-Host ""
     Write-Host "No options: launch the interactive hardening wizard."
     Write-Host ""
@@ -4789,6 +4802,22 @@ function Main {
     if ($Version) {
         Write-Host "barked v$($script:VERSION)"
         exit 0
+    }
+    # Validate flag combinations
+    if ($Auto -and -not $Profile) {
+        Write-Host "Error: -Auto requires -Profile <name>" -ForegroundColor Red
+        exit 1
+    }
+    if ($Profile -and $Profile -notin @("standard", "high", "paranoid")) {
+        Write-Host "Error: -Profile must be one of: standard, high, paranoid (got '$Profile')" -ForegroundColor Red
+        exit 1
+    }
+    if ($Quiet -and -not $Auto -and -not $Audit) {
+        Write-Host "Error: -Quiet requires -Auto or -Audit" -ForegroundColor Red
+        exit 1
+    }
+    if ($Quiet) {
+        $script:QuietMode = $true
     }
     if ($Update) {
         Invoke-Update
@@ -4835,6 +4864,36 @@ function Main {
         Run-Audit
         Invoke-PassiveUpdateCheck
         exit 0
+    }
+
+    if ($Auto) {
+        if (-not $script:QuietMode) {
+            Print-Header
+            Write-Host "  Detected: " -NoNewline
+            Write-ColorLine "Windows $(([System.Environment]::OSVersion.Version))" Green
+        }
+
+        $script:Profile = $Profile
+        Build-ModuleList
+
+        # Check if elevation is needed
+        if (-not (Test-IsAdmin) -and -not $Elevated) {
+            $adminModules = @('firewall-inbound','firewall-stealth','dns-secure','auto-updates',
+                              'guest-disable','hostname-scrub','telemetry-disable')
+            $needsAdmin = $false
+            foreach ($mod in $script:EnabledModules) {
+                if ($adminModules -contains $mod) { $needsAdmin = $true; break }
+            }
+            if ($needsAdmin) { Request-Elevation }
+        }
+
+        Run-AllModules
+        Write-State
+        Print-Summary
+        Write-Log
+        $exitCode = 0
+        if ($script:CountFailed -gt 0) { $exitCode = 1 }
+        exit $exitCode
     }
 
     Print-Header
