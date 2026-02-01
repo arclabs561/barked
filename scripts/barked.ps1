@@ -15,7 +15,10 @@ param(
     [switch]$Update,
     [switch]$UninstallSelf,
     [switch]$Elevated,
-    [switch]$Audit
+    [switch]$Audit,
+    [switch]$CleanSchedule,
+    [switch]$CleanUnschedule,
+    [switch]$CleanScheduled
 )
 
 Set-StrictMode -Version Latest
@@ -99,6 +102,11 @@ $script:CleanScanBytes = @{}
 $script:CleanResultFiles = @{}
 $script:CleanResultBytes = @{}
 $script:CleanResultStatus = @{}
+# Scheduled clean config paths
+$script:SchedConfigUser = Join-Path $env:APPDATA "barked\scheduled-clean.json"
+$script:SchedConfigProject = Join-Path (Split-Path $script:ScriptDir) "state\scheduled-clean.json"
+$script:SchedTaskName = "BarkedScheduledClean"
+$script:CleanForce = $false
 $script:CleanLogEntries = @()
 
 $script:CleanCatOrder = @('system-caches','user-caches','browser-data','privacy-traces','dev-cruft','trash-downloads','mail-messages')
@@ -157,6 +165,354 @@ $script:CleanSeverity = @{
 }
 
 $script:SeverityWeight = @{ 'CRITICAL' = 10; 'HIGH' = 7; 'MEDIUM' = 4; 'LOW' = 2 }
+
+# ═══════════════════════════════════════════════════════════════════
+# SCHEDULED CLEAN: CONFIG
+# ═══════════════════════════════════════════════════════════════════
+
+function Load-ScheduledConfig {
+    $configFile = $null
+    if (Test-Path $script:SchedConfigUser) {
+        $configFile = $script:SchedConfigUser
+    } elseif (Test-Path $script:SchedConfigProject) {
+        $configFile = $script:SchedConfigProject
+    } else {
+        return $null
+    }
+    try {
+        $config = Get-Content $configFile -Raw | ConvertFrom-Json
+        return $config
+    } catch {
+        return $null
+    }
+}
+
+function Save-ScheduledConfig {
+    param([bool]$Enabled, [string]$Schedule, [bool]$Notify, [string[]]$Categories)
+    $config = @{
+        enabled = $Enabled
+        schedule = $Schedule
+        categories = $Categories
+        notify = $Notify
+        last_run = ""
+        version = "1.0"
+    }
+    try {
+        $dir = Split-Path $script:SchedConfigUser
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $config | ConvertTo-Json | Out-File -FilePath $script:SchedConfigUser -Encoding UTF8 -ErrorAction Stop
+
+        # Backup to project directory
+        $projDir = Split-Path $script:SchedConfigProject
+        if (Test-Path (Split-Path $projDir)) {
+            New-Item -ItemType Directory -Path $projDir -Force | Out-Null
+            Copy-Item $script:SchedConfigUser $script:SchedConfigProject -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-Host "  ERROR: Failed to save scheduled clean config" -ForegroundColor Red
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# SCHEDULED CLEAN: SETUP WIZARD
+# ═══════════════════════════════════════════════════════════════════
+
+function Install-CleanScheduledTask {
+    param([string]$Schedule)
+
+    $scriptPath = $MyInvocation.ScriptName
+    if (-not $scriptPath) { $scriptPath = $PSCommandPath }
+    if (-not $scriptPath) { $scriptPath = Join-Path $script:ScriptDir "barked.ps1" }
+
+    # Find pwsh or powershell
+    $pwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+    if (-not $pwshPath) { $pwshPath = (Get-Command powershell -ErrorAction SilentlyContinue).Source }
+    if (-not $pwshPath) { $pwshPath = "powershell.exe" }
+
+    $action = New-ScheduledTaskAction -Execute $pwshPath -Argument "-NonInteractive -NoProfile -File `"$scriptPath`" -CleanScheduled"
+
+    if ($Schedule -eq "daily") {
+        $trigger = New-ScheduledTaskTrigger -Daily -At "2:00AM"
+    } else {
+        $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At "2:00AM"
+    }
+
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+    try {
+        # Remove existing task if present
+        Unregister-ScheduledTask -TaskName $script:SchedTaskName -Confirm:$false -ErrorAction SilentlyContinue
+        Register-ScheduledTask -TaskName $script:SchedTaskName -Action $action -Trigger $trigger -Settings $settings -Description "Barked automated system cleaning" -ErrorAction Stop | Out-Null
+        Write-Host "  " -NoNewline; Write-ColorLine "Task Scheduler entry created" Green
+    } catch {
+        Write-Host "  ERROR: Failed to register scheduled task: $_" -ForegroundColor Red
+        Write-Host "  Try running as Administrator to register scheduled tasks." -ForegroundColor DarkYellow
+    }
+}
+
+function Setup-ScheduledClean {
+    Print-Section "Scheduled Cleaning Setup"
+
+    Write-Host "  Configure automatic system cleaning" -ForegroundColor White
+    Write-Host ""
+
+    # Step 1: Category selection (reuse existing picker)
+    Write-Host "  Step 1/3: Select categories to clean automatically" -ForegroundColor White
+    Write-Host ""
+    Show-CleanPicker
+
+    # Capture selected categories
+    $selectedCats = @()
+    foreach ($cat in $script:CleanCatOrder) {
+        if ($script:CleanCategories[$cat]) {
+            $selectedCats += $cat
+        }
+    }
+
+    if ($selectedCats.Count -eq 0) {
+        Write-Host "  No categories selected. Setup cancelled." -ForegroundColor Red
+        return
+    }
+
+    Write-Host ""
+    Write-Host "  Selected $($selectedCats.Count) categories" -ForegroundColor Green
+    Write-Host ""
+
+    # Step 2: Schedule frequency
+    Write-Host "  Step 2/3: How often should automated cleaning run?" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  " -NoNewline; Write-Color "[1]" Green; Write-Host " Daily (every day at 2:00 AM)"
+    Write-Host "  " -NoNewline; Write-Color "[2]" Green; Write-Host " Weekly (Sunday at 2:00 AM)"
+    Write-Host ""
+
+    $schedule = ""
+    while ($true) {
+        Write-Host "  Choice: " -NoNewline -ForegroundColor White
+        $schedChoice = Read-Host
+        switch ($schedChoice) {
+            "1" { $schedule = "daily"; break }
+            "2" { $schedule = "weekly"; break }
+            default { Write-Host "  Invalid choice. Enter 1-2." -ForegroundColor Red }
+        }
+        if ($schedule) { break }
+    }
+
+    Write-Host ""
+
+    # Step 3: Notification preference
+    Write-Host "  Step 3/3: Show notification when cleaning completes?" -ForegroundColor White
+    Write-Host "  [Y/n]: " -NoNewline -ForegroundColor White
+    $notifyInput = Read-Host
+    $notify = $notifyInput.ToLower() -ne "n"
+
+    Write-Host ""
+
+    # Confirmation summary
+    $schedDisplay = if ($schedule -eq "daily") { "Daily at 2:00 AM" } else { "Weekly (Sunday 2:00 AM)" }
+    $catNames = ($selectedCats | ForEach-Object { $script:CleanCatNames[$_] }) -join ", "
+    if ($catNames.Length -gt 41) { $catNames = $catNames.Substring(0, 38) + "..." }
+    $notifyDisplay = if ($notify) { "Yes" } else { "No" }
+
+    Write-ColorLine "  ╔══════════════════════════════════════════════════════════╗" Green
+    Write-Host "  " -NoNewline; Write-Color "║" Green; Write-Host "      SCHEDULED CLEANING CONFIGURED                       " -NoNewline; Write-ColorLine "║" Green
+    Write-ColorLine "  ╠══════════════════════════════════════════════════════════╣" Green
+    Write-Host "  " -NoNewline; Write-Color "║" Green; Write-Host (" Categories: {0,-44}" -f $catNames) -NoNewline; Write-ColorLine "║" Green
+    Write-Host "  " -NoNewline; Write-Color "║" Green; Write-Host (" Schedule:   {0,-44}" -f $schedDisplay) -NoNewline; Write-ColorLine "║" Green
+    Write-Host "  " -NoNewline; Write-Color "║" Green; Write-Host (" Notify:     {0,-44}" -f $notifyDisplay) -NoNewline; Write-ColorLine "║" Green
+    Write-ColorLine "  ╚══════════════════════════════════════════════════════════╝" Green
+    Write-Host ""
+
+    # Save config
+    Save-ScheduledConfig -Enabled $true -Schedule $schedule -Notify $notify -Categories $selectedCats
+
+    # Install scheduler
+    Install-CleanScheduledTask -Schedule $schedule
+
+    Write-Host ""
+    Write-Host "  Scheduled cleaning configured" -ForegroundColor Green
+    Write-Host ""
+}
+
+function Unschedule-ScheduledClean {
+    Print-Section "Remove Scheduled Cleaning"
+
+    $config = Load-ScheduledConfig
+    if (-not $config) {
+        Write-Host "  No scheduled cleaning configured" -ForegroundColor DarkYellow
+        return
+    }
+
+    # Remove Task Scheduler entry
+    try {
+        $task = Get-ScheduledTask -TaskName $script:SchedTaskName -ErrorAction SilentlyContinue
+        if ($task) {
+            Unregister-ScheduledTask -TaskName $script:SchedTaskName -Confirm:$false -ErrorAction Stop
+            Write-Host "  Removed scheduled task" -ForegroundColor Green
+        } else {
+            Write-Host "  No scheduled task found" -ForegroundColor DarkYellow
+        }
+    } catch {
+        Write-Host "  ERROR: Failed to remove scheduled task: $_" -ForegroundColor Red
+    }
+
+    # Disable in config
+    if (Test-Path $script:SchedConfigUser) {
+        try {
+            $config = Get-Content $script:SchedConfigUser -Raw | ConvertFrom-Json
+            $config.enabled = $false
+            $config | ConvertTo-Json | Out-File -FilePath $script:SchedConfigUser -Encoding UTF8 -ErrorAction Stop
+            Write-Host "  Disabled scheduled cleaning" -ForegroundColor Green
+        } catch {
+            Write-Host "  ERROR: Failed to update config" -ForegroundColor Red
+        }
+    }
+
+    Write-Host ""
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# SCHEDULED CLEAN: EXECUTION (invoked by Task Scheduler)
+# ═══════════════════════════════════════════════════════════════════
+
+function Send-CleanNotification {
+    param([int]$FileCount, [long]$BytesFreed)
+
+    if ($FileCount -eq 0 -and $BytesFreed -eq 0) { return }
+
+    $sizeStr = Format-CleanBytes $BytesFreed
+    $message = "Cleaned $sizeStr from $FileCount files"
+
+    # Try BurntToast module first
+    if (Get-Module -ListAvailable -Name BurntToast -ErrorAction SilentlyContinue) {
+        try {
+            Import-Module BurntToast -ErrorAction Stop
+            New-BurntToastNotification -Text "Barked Cleaner", $message -ErrorAction Stop
+            return
+        } catch { }
+    }
+
+    # Fallback: Windows Forms MessageBox (non-blocking via job)
+    try {
+        Start-Job -ScriptBlock {
+            Add-Type -AssemblyName System.Windows.Forms
+            [System.Windows.Forms.MessageBox]::Show($using:message, "Barked Cleaner", "OK", "Information") | Out-Null
+        } | Out-Null
+    } catch { }
+}
+
+function Run-ScheduledClean {
+    $lockFile = Join-Path $env:TEMP "barked-clean.lock"
+    $lockTimeout = 7200  # 2 hours in seconds
+
+    # 1. Load config and validate
+    $config = Load-ScheduledConfig
+    if (-not $config) {
+        Write-CleanLogEntry "ERROR" "Failed to load scheduled clean config"
+        return
+    }
+    if (-not $config.enabled) {
+        Write-CleanLogEntry "INFO" "Scheduled cleaning is disabled, skipping"
+        return
+    }
+
+    # 2. Pre-flight: disk space
+    try {
+        $drive = Get-PSDrive C -ErrorAction Stop
+        $freeGB = [math]::Round($drive.Free / 1GB, 1)
+        if ($freeGB -lt 5) {
+            Write-CleanLogEntry "WARN" "Low disk space (${freeGB}GB), skipping scheduled clean"
+            return
+        }
+    } catch { }
+
+    # 3. Pre-flight: battery
+    try {
+        $battery = Get-WmiObject Win32_Battery -ErrorAction SilentlyContinue
+        if ($battery -and $battery.EstimatedChargeRemaining -lt 20 -and $battery.BatteryStatus -ne 2) {
+            Write-CleanLogEntry "WARN" "Low battery ($($battery.EstimatedChargeRemaining)%), skipping scheduled clean"
+            return
+        }
+    } catch { }
+
+    # 4. Lock file
+    if (Test-Path $lockFile) {
+        $lockAge = ((Get-Date) - (Get-Item $lockFile).LastWriteTime).TotalSeconds
+        if ($lockAge -lt $lockTimeout) {
+            Write-CleanLogEntry "INFO" "Another clean is already running (lock age: ${lockAge}s), exiting"
+            return
+        }
+        Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+    }
+    try {
+        [IO.File]::Open($lockFile, 'CreateNew', 'Write').Close()
+    } catch {
+        Write-CleanLogEntry "INFO" "Another clean acquired the lock first, exiting"
+        return
+    }
+
+    try {
+        # 5. Set categories from config
+        if (-not $config.categories -or $config.categories.Count -eq 0) {
+            Write-CleanLogEntry "ERROR" "No categories configured for scheduled clean"
+            return
+        }
+
+        foreach ($cat in $script:CleanCatOrder) {
+            $script:CleanCategories[$cat] = $false
+        }
+        foreach ($cat in $config.categories) {
+            if ($script:CleanCategories.ContainsKey($cat)) {
+                $script:CleanCategories[$cat] = $true
+            }
+        }
+
+        # Populate clean targets from enabled categories
+        $script:CleanTargets = @{}
+        foreach ($cat in $script:CleanCatOrder) {
+            if ($script:CleanCategories[$cat]) {
+                foreach ($target in $script:CleanCatTargets[$cat]) {
+                    $script:CleanTargets[$target] = $true
+                }
+            }
+        }
+
+        Write-CleanLogEntry "INFO" "Starting scheduled clean: categories=$($config.categories -join ',')"
+
+        # 6. Run clean (force mode — no confirmation)
+        $script:CleanForce = $true
+        Invoke-CleanExecute
+
+        # 7. Calculate totals
+        $totalFiles = 0
+        $totalBytes = [long]0
+        foreach ($count in $script:CleanResultFiles.Values) { $totalFiles += $count }
+        foreach ($bytes in $script:CleanResultBytes.Values) { $totalBytes += $bytes }
+
+        $totalSizeFmt = Format-CleanBytes $totalBytes
+        Write-CleanLogEntry "INFO" "Scheduled clean completed: $totalFiles files, $totalSizeFmt freed"
+
+        # 8. Notify if enabled
+        if ($config.notify) {
+            Send-CleanNotification -FileCount $totalFiles -BytesFreed $totalBytes
+        }
+
+        # 9. Update last_run timestamp
+        if (Test-Path $script:SchedConfigUser) {
+            try {
+                $cfg = Get-Content $script:SchedConfigUser -Raw | ConvertFrom-Json
+                $cfg.last_run = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                $cfg | ConvertTo-Json | Out-File -FilePath $script:SchedConfigUser -Encoding UTF8 -ErrorAction Stop
+            } catch {
+                Write-CleanLogEntry "WARN" "Failed to update last_run timestamp"
+            }
+        }
+    } finally {
+        # Always remove lock file
+        Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-CleanLog
+}
 
 # ═══════════════════════════════════════════════════════════════════
 # OUTPUT UTILITIES
@@ -4403,6 +4759,8 @@ function Print-Help {
     Write-Host "  -Modify       Interactive module picker — add or remove individual modules"
     Write-Host "  -Audit        Score system security without making changes"
     Write-Host "  -Clean        System cleaner — remove caches, logs, browser data, and more"
+    Write-Host "  -CleanSchedule    Set up scheduled cleaning"
+    Write-Host "  -CleanUnschedule  Remove scheduled cleaning"
     Write-Host "  -Force        Skip confirmation prompts (use with -Clean)"
     Write-Host "  -DryRun       Preview changes without applying them (use with -Clean)"
     Write-Host "  -Help         Show this help message"
@@ -4416,6 +4774,7 @@ function Print-Help {
     Write-Host "  .\barked.ps1 -Clean                 Interactive system cleaner"
     Write-Host "  .\barked.ps1 -Clean -DryRun         Preview what would be cleaned"
     Write-Host "  .\barked.ps1 -Clean -Force          Clean without confirmation"
+    Write-Host "  .\barked.ps1 -CleanSchedule          Set up recurring clean"
     Write-Host ""
     Write-Host "No options: launch the interactive hardening wizard."
     Write-Host ""
@@ -4442,6 +4801,25 @@ function Main {
     }
     if ($Modify) {
         $script:RunMode = "modify"
+    }
+
+    if ($CleanScheduled) {
+        Run-ScheduledClean
+        exit 0
+    }
+
+    if ($CleanSchedule) {
+        Print-Header
+        Setup-ScheduledClean
+        Invoke-PassiveUpdateCheck
+        exit 0
+    }
+
+    if ($CleanUnschedule) {
+        Print-Header
+        Unschedule-ScheduledClean
+        Invoke-PassiveUpdateCheck
+        exit 0
     }
 
     if ($Clean) {
