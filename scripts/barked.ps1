@@ -167,6 +167,53 @@ $script:CleanSeverity = @{
 $script:SeverityWeight = @{ 'CRITICAL' = 10; 'HIGH' = 7; 'MEDIUM' = 4; 'LOW' = 2 }
 
 # ═══════════════════════════════════════════════════════════════════
+# SCHEDULED CLEAN: CONFIG
+# ═══════════════════════════════════════════════════════════════════
+
+function Load-ScheduledConfig {
+    $configFile = $null
+    if (Test-Path $script:SchedConfigUser) {
+        $configFile = $script:SchedConfigUser
+    } elseif (Test-Path $script:SchedConfigProject) {
+        $configFile = $script:SchedConfigProject
+    } else {
+        return $null
+    }
+    try {
+        $config = Get-Content $configFile -Raw | ConvertFrom-Json
+        return $config
+    } catch {
+        return $null
+    }
+}
+
+function Save-ScheduledConfig {
+    param([bool]$Enabled, [string]$Schedule, [bool]$Notify, [string[]]$Categories)
+    $config = @{
+        enabled = $Enabled
+        schedule = $Schedule
+        categories = $Categories
+        notify = $Notify
+        last_run = ""
+        version = "1.0"
+    }
+    try {
+        $dir = Split-Path $script:SchedConfigUser
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $config | ConvertTo-Json | Out-File -FilePath $script:SchedConfigUser -Encoding UTF8 -ErrorAction Stop
+
+        # Backup to project directory
+        $projDir = Split-Path $script:SchedConfigProject
+        if (Test-Path (Split-Path $projDir)) {
+            New-Item -ItemType Directory -Path $projDir -Force | Out-Null
+            Copy-Item $script:SchedConfigUser $script:SchedConfigProject -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-Host "  ERROR: Failed to save scheduled clean config" -ForegroundColor Red
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # OUTPUT UTILITIES
 # ═══════════════════════════════════════════════════════════════════
 function Write-Color {
