@@ -1821,6 +1821,51 @@ function Run-Module {
     $script:CurrentModule++
     $script:ModuleMode = $Mode
 
+    # Dry-run guard: run check instead of apply
+    if ($DryRun -and $Mode -eq "apply") {
+        $checkFunc = "Check-$ModId"
+        if (Get-Command $checkFunc -ErrorAction SilentlyContinue) {
+            & $checkFunc
+        }
+        # Find this module's finding
+        $idx = -1
+        for ($i = 0; $i -lt $script:FindingsModule.Count; $i++) {
+            if ($script:FindingsModule[$i] -eq $ModId) { $idx = $i; break }
+        }
+        $status = if ($idx -ge 0) { $script:FindingsStatus[$idx] } else { "SKIP" }
+        $finding = if ($idx -ge 0) { $script:FindingsMessage[$idx] } else { "No check function" }
+        $sev = if ($script:ModuleSeverity[$ModId]) { $script:ModuleSeverity[$ModId] } else { "LOW" }
+
+        if (-not $script:QuietMode) {
+            Write-Host ""
+            Write-Host "  " -NoNewline
+            Write-Color "[DRY RUN]" Green
+            Write-Host " $ModId" -ForegroundColor White
+            Write-Host "    Current:  $finding"
+            if ($status -eq "PASS") {
+                Write-Host "    Planned:  " -NoNewline
+                Write-ColorLine "No change needed" DarkYellow
+            } else {
+                Write-Host "    Planned:  " -NoNewline
+                Write-ColorLine "Would apply hardening" DarkYellow
+            }
+            Write-Host "    Severity: $sev"
+        }
+
+        Log-Entry $ModId "dry-run" $status $finding
+
+        if ($status -eq "PASS") {
+            $script:ModuleResult = "skipped"
+        } else {
+            $script:ModuleResult = "applied"
+        }
+        switch ($script:ModuleResult) {
+            "applied" { $script:CountApplied++ }
+            "skipped" { $script:CountSkipped++ }
+        }
+        return
+    }
+
     if ($Mode -eq "revert") {
         $funcName = "Revert-$($ModId)"
         if (Get-Command $funcName -ErrorAction SilentlyContinue) {
@@ -1857,7 +1902,13 @@ function Run-Module {
 }
 
 function Run-AllModules {
-    if (-not $script:QuietMode) { Print-Section "Applying Hardening ($($script:TotalModules) modules)" }
+    if (-not $script:QuietMode) {
+        if ($DryRun) {
+            Print-Section "Dry Run Preview ($($script:TotalModules) modules)"
+        } else {
+            Print-Section "Applying Hardening ($($script:TotalModules) modules)"
+        }
+    }
     foreach ($mod in $script:EnabledModules) {
         Run-Module $mod
     }
