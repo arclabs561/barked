@@ -601,7 +601,7 @@ function Prompt-Choice {
     Write-Host ""
     for ($i = 0; $i -lt $Options.Count; $i++) {
         Write-Host "  " -NoNewline
-        Write-Color "[$($i+1)] Green
+        Write-Color "[$($i+1)]" Green
         Write-Host " $($Options[$i])"
     }
     Write-Host ""
@@ -3755,7 +3755,7 @@ function Show-CleanDrilldown {
                 $mark = " "
                 if ($script:CleanTargets.ContainsKey($t) -and $script:CleanTargets[$t]) { $mark = "*" }
                 Write-Host "    " -NoNewline
-                Write-Color "[$num] Green
+                Write-Color "[$num]" Green
                 Write-Host " [$mark] $($script:CleanTargetNames[$t])"
             }
             Write-Host ""
@@ -4766,7 +4766,7 @@ function Invoke-Clean {
     # Dry-run: show preview and exit
     if ($DryRun) {
         Write-Host ""
-        Write-Host "  " -NoNewline; Write-Color "[DRY RUN] Green; Write-Host " Preview only -- no files deleted."
+        Write-Host "  " -NoNewline; Write-Color "[DRY RUN]" Green; Write-Host " Preview only -- no files deleted."
         return
     }
 
