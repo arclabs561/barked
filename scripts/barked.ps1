@@ -449,18 +449,29 @@ function Run-ScheduledClean {
         }
     } catch { }
 
-    # 4. Lock file
-    if (Test-Path -LiteralPath $lockFile) {
-        $lockAge = ((Get-Date) - (Get-Item -LiteralPath $lockFile).LastWriteTime).TotalSeconds
-        if ($lockAge -lt $lockTimeout) {
-            Write-CleanLogEntry "INFO" "Another clean is already running (lock age: ${lockAge}s), exiting"
-            return
-        }
-        Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
-    }
+    # 4. Acquire lock file (atomic create), with stale-lock handling
+    $lockAcquired = $false
     try {
         [IO.File]::Open($lockFile, 'CreateNew', 'Write').Close()
+        $lockAcquired = $true
     } catch {
+        # If lock exists, check age; remove if stale and retry once
+        try {
+            if (Test-Path -LiteralPath $lockFile) {
+                $lockAge = ((Get-Date) - (Get-Item -LiteralPath $lockFile).LastWriteTime).TotalSeconds
+                if ($lockAge -lt $lockTimeout) {
+                    Write-CleanLogEntry "INFO" "Another clean is already running (lock age: ${lockAge}s), exiting"
+                    return
+                }
+                Write-CleanLogEntry "WARN" "Stale lock file detected (lock age: ${lockAge}s), removing"
+                Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+
+                [IO.File]::Open($lockFile, 'CreateNew', 'Write').Close()
+                $lockAcquired = $true
+            }
+        } catch { }
+    }
+    if (-not $lockAcquired) {
         Write-CleanLogEntry "INFO" "Another clean acquired the lock first, exiting"
         return
     }
@@ -522,8 +533,10 @@ function Run-ScheduledClean {
             }
         }
     } finally {
-        # Always remove lock file
-        Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+        # Always remove lock file (only if we acquired it)
+        if ($lockAcquired) {
+            Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Write-CleanLog
