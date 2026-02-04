@@ -84,12 +84,19 @@ QUIET_MODE=false
 ACCEPT_ADVANCED=false
 AUTO_PROFILE=""              # profile name for --auto mode
 
+# Testability / harness knobs
+NO_UPDATE_CHECK=false        # disable passive update notifications
+AUDIT_OUTPUT_DIR=""          # override audit/dry-run report directory
+
 # Clean mode
 CLEAN_MODE=false
 CLEAN_FORCE=false
 CLEAN_SCHEDULED=false
 CLEAN_SCHEDULE_SETUP=false
 CLEAN_UNSCHEDULE=false
+
+# Cleaner test knob: comma-separated category keys (e.g. user-caches,dev-cruft)
+CLEAN_SELECT_CATEGORIES=""
 
 # Scheduled clean config (loaded from config file)
 SCHED_ENABLED=""
@@ -1620,12 +1627,25 @@ run_audit() {
     write_audit_report audit_mods findings_map "$pct" "$_ac" "$_tc"
 }
 
+audit_report_dir() {
+    if [[ -n "${AUDIT_OUTPUT_DIR:-}" ]]; then
+        echo "$AUDIT_OUTPUT_DIR"
+        return 0
+    fi
+    if [[ -n "${BARKED_AUDIT_DIR:-}" ]]; then
+        echo "$BARKED_AUDIT_DIR"
+        return 0
+    fi
+    echo "${SCRIPT_DIR}/../audits"
+}
+
 write_audit_report() {
     local -n _rpt_mods=$1
     local -n _rpt_findings=$2
     local pct="$3" ac="$4" tc="$5"
 
-    local report_dir="${SCRIPT_DIR}/../audits"
+    local report_dir
+    report_dir="$(audit_report_dir)"
     mkdir -p "$report_dir"
     local report_file="${report_dir}/audit-${DATE}.md"
 
@@ -1671,7 +1691,8 @@ write_audit_report() {
 # DRY-RUN REPORT
 # ═══════════════════════════════════════════════════════════════════
 write_dry_run_report() {
-    local report_dir="${SCRIPT_DIR}/../audits"
+    local report_dir
+    report_dir="$(audit_report_dir)"
     mkdir -p "$report_dir"
     local report_file="${report_dir}/dry-run-${DATE}.md"
 
@@ -5555,6 +5576,17 @@ write_log() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --audit-dir)
+                if [[ -z "${2:-}" ]]; then
+                    echo -e "${RED}--audit-dir requires a path${NC}"
+                    exit 1
+                fi
+                AUDIT_OUTPUT_DIR="$2"
+                shift
+                ;;
+            --no-update-check)
+                NO_UPDATE_CHECK=true
+                ;;
             --uninstall|-u)
                 RUN_MODE="uninstall"
                 ;;
@@ -5586,6 +5618,14 @@ parse_args() {
                 ;;
             --clean|-c)
                 CLEAN_MODE=true
+                ;;
+            --clean-select)
+                if [[ -z "${2:-}" ]]; then
+                    echo -e "${RED}--clean-select requires a comma-separated list${NC}"
+                    exit 1
+                fi
+                CLEAN_SELECT_CATEGORIES="$2"
+                shift
                 ;;
             --force)
                 CLEAN_FORCE=true
@@ -5620,10 +5660,13 @@ parse_args() {
                 echo "  --dry-run              Show what would be changed without applying"
                 echo "  --auto                 Run non-interactively (requires --profile)"
                 echo "  --profile <name>       Set security profile: standard, high, paranoid"
+                echo "  --audit-dir <path>     Write audit/dry-run reports to this directory"
                 echo "  --quiet, -q            Suppress interactive output (requires --auto or --audit)"
                 echo "  --accept-advanced      Accept all advanced hardening prompts"
+                echo "  --no-update-check      Disable passive update notifications"
                 echo "  --force                Skip confirmation prompt (use with --clean)"
                 echo "  --clean-scheduled      Execute a scheduled clean run"
+                echo "  --clean-select <cats>  Non-interactive category selection (comma-separated keys)"
                 echo "  --clean-schedule       Set up scheduled cleaning"
                 echo "  --clean-unschedule     Remove scheduled cleaning"
                 echo "  --version, -v          Show version and exit"
@@ -5634,12 +5677,14 @@ parse_args() {
                 echo "Examples:"
                 echo "  $0                                  Interactive wizard"
                 echo "  $0 --audit                          Score current security posture"
+                echo "  $0 --audit --audit-dir /tmp/barked   Write audit report to custom dir"
                 echo "  $0 --dry-run --profile high         Preview high-profile changes"
                 echo "  $0 --auto --profile standard        Apply standard profile non-interactively"
                 echo "  $0 --auto --profile paranoid -q     Silent paranoid hardening"
                 echo "  $0 --uninstall                      Revert all changes"
                 echo "  $0 --clean                          Interactive system cleaner"
                 echo "  $0 --clean --dry-run                Preview what would be cleaned"
+                echo "  $0 --clean --dry-run --clean-select user-caches,dev-cruft  Non-interactive preview"
                 echo "  $0 --version                          Show version"
                 echo "  $0 --clean --force                  Clean without confirmation"
                 exit 0
@@ -7020,8 +7065,40 @@ run_clean() {
     printf "${GREEN}║${NC}%-50s${GREEN}║${NC}\n" "                  macOS / Linux"
     echo -e "${GREEN}╚══════════════════════════════════════════════════╝${NC}"
 
-    clean_picker
-    clean_drilldown
+    if [[ -n "${CLEAN_SELECT_CATEGORIES:-}" ]]; then
+        # Non-interactive selection for tests/harnesses
+        for cat in "${CLEAN_CAT_ORDER[@]}"; do
+            CLEAN_CATEGORIES[$cat]=0
+        done
+
+        IFS=',' read -r -a _sel <<< "${CLEAN_SELECT_CATEGORIES}"
+        for raw in "${_sel[@]}"; do
+            local key="${raw//[[:space:]]/}"
+            [[ -z "$key" ]] && continue
+            if [[ -n "${CLEAN_CATEGORIES[$key]+x}" ]]; then
+                CLEAN_CATEGORIES[$key]=1
+            else
+                echo -e "  ${RED}Error:${NC} unknown clean category key: ${key}"
+                echo -e "  Valid keys: ${CLEAN_CAT_ORDER[*]}"
+                return 1
+            fi
+        done
+
+        # Populate CLEAN_TARGETS from categories (same as end of clean_picker)
+        CLEAN_TARGETS=()
+        for cat in "${CLEAN_CAT_ORDER[@]}"; do
+            if [[ "${CLEAN_CATEGORIES[$cat]}" == "1" ]]; then
+                for target in ${CLEAN_CAT_TARGETS[$cat]}; do
+                    if clean_target_available "$target"; then
+                        CLEAN_TARGETS[$target]=1
+                    fi
+                done
+            fi
+        done
+    else
+        clean_picker
+        clean_drilldown
+    fi
     needs_sudo && acquire_sudo
     clean_preview
 
@@ -7151,6 +7228,8 @@ run_update() {
 }
 
 check_update_passive() {
+    [[ "${NO_UPDATE_CHECK:-}" == true ]] && return 0
+    [[ "${BARKED_NO_UPDATE_CHECK:-}" == "1" ]] && return 0
     [[ "${QUIET_MODE:-}" == true ]] && return
     command -v curl &>/dev/null || return 0
 
