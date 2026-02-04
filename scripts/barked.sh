@@ -588,7 +588,7 @@ state_migrate_legacy() {
             echo -e "  ${BROWN}Migrated state file to ${STATE_FILE_USER}${NC}"
             # Use sudo -n (non-interactive) so this never prompts;
             # if credentials aren't cached the old file just stays
-            sudo -n rm -f "$STATE_FILE_LEGACY" 2>/dev/null || true
+            sudo -n rm -f -- "$STATE_FILE_LEGACY" 2>/dev/null || true
         fi
     fi
 }
@@ -616,6 +616,10 @@ state_write() {
 
     mkdir -p "$(dirname "$STATE_FILE_USER")" 2>/dev/null
     local write_targets=("$STATE_FILE_USER" "$STATE_FILE_PROJECT")
+
+    local old_umask
+    old_umask="$(umask)"
+    umask 077
 
     python3 - "${write_targets[@]}" << PYWRITE 2>/dev/null
 import json, sys, os
@@ -648,6 +652,9 @@ for path in sys.argv[1:]:
     with open(path, 'w') as f:
         json.dump(state, f, indent=2)
 PYWRITE
+
+    umask "$old_umask" 2>/dev/null || true
+    chmod 600 "$STATE_FILE_USER" "$STATE_FILE_PROJECT" 2>/dev/null || true
 
     echo ""
     echo -e "  ${BROWN}State file written to:${NC}"
@@ -6393,9 +6400,9 @@ safe_rm_contents() {
 
         local rm_ok=false
         if [[ "$use_root" == true ]]; then
-            run_as_root rm -f "$file" 2>/dev/null && rm_ok=true
+            run_as_root rm -f -- "$file" 2>/dev/null && rm_ok=true
         else
-            rm -f "$file" 2>/dev/null && rm_ok=true
+            rm -f -- "$file" 2>/dev/null && rm_ok=true
         fi
 
         if $rm_ok; then
@@ -7096,13 +7103,13 @@ run_update() {
     echo -e "  Downloading v${latest}..."
     curl -fsSL --connect-timeout 5 --max-time 30 "$download_url" -o "$tmp_file" 2>/dev/null || {
         echo -e "${RED}Failed to download update.${NC}"
-        rm -f "$tmp_file"
+        rm -f -- "$tmp_file"
         exit 1
     }
 
     if ! bash -n "$tmp_file" 2>/dev/null; then
         echo -e "${RED}Downloaded file has syntax errors — aborting update.${NC}"
-        rm -f "$tmp_file"
+        rm -f -- "$tmp_file"
         exit 1
     fi
 
@@ -7110,22 +7117,22 @@ run_update() {
 
     # Install using appropriate privileges
     if [[ "$need_root" == true ]]; then
-        run_as_root mv "$tmp_file" "$install_path" 2>/dev/null || {
-            run_as_root cp "$tmp_file" "$install_path" 2>/dev/null || {
+        run_as_root mv -- "$tmp_file" "$install_path" 2>/dev/null || {
+            run_as_root cp -- "$tmp_file" "$install_path" 2>/dev/null || {
                 echo -e "${RED}Failed to replace ${install_path}.${NC}"
-                rm -f "$tmp_file"
+                rm -f -- "$tmp_file"
                 exit 1
             }
-            rm -f "$tmp_file"
+            rm -f -- "$tmp_file"
         }
     else
-        mv "$tmp_file" "$install_path" 2>/dev/null || {
-            cp "$tmp_file" "$install_path" 2>/dev/null || {
+        mv -- "$tmp_file" "$install_path" 2>/dev/null || {
+            cp -- "$tmp_file" "$install_path" 2>/dev/null || {
                 echo -e "${RED}Failed to replace ${install_path}.${NC}"
-                rm -f "$tmp_file"
+                rm -f -- "$tmp_file"
                 exit 1
             }
-            rm -f "$tmp_file"
+            rm -f -- "$tmp_file"
         }
     fi
 
@@ -7181,7 +7188,7 @@ run_uninstall_self() {
         }
     fi
 
-    run_as_root rm -f "$install_path"
+    run_as_root rm -f -- "$install_path"
     rm -f "${TMPDIR:-/tmp}/barked-update-check-$(id -u)"
     echo -e "${GREEN}barked has been removed from ${install_path}.${NC}"
     exit 0
