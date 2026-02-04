@@ -439,13 +439,13 @@ function Run-ScheduledClean {
     } catch { }
 
     # 4. Lock file
-    if (Test-Path $lockFile) {
-        $lockAge = ((Get-Date) - (Get-Item $lockFile).LastWriteTime).TotalSeconds
+    if (Test-Path -LiteralPath $lockFile) {
+        $lockAge = ((Get-Date) - (Get-Item -LiteralPath $lockFile).LastWriteTime).TotalSeconds
         if ($lockAge -lt $lockTimeout) {
             Write-CleanLogEntry "INFO" "Another clean is already running (lock age: ${lockAge}s), exiting"
             return
         }
-        Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
     }
     try {
         [IO.File]::Open($lockFile, 'CreateNew', 'Write').Close()
@@ -512,7 +512,7 @@ function Run-ScheduledClean {
         }
     } finally {
         # Always remove lock file
-        Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
     }
 
     Write-CleanLog
