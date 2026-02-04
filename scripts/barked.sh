@@ -557,10 +557,14 @@ state_read() {
     tmp=$(mktemp)
     python3 - "$state_file" << 'PYREAD' > "$tmp" 2>/dev/null
 import json, sys, shlex
+import re
 try:
     with open(sys.argv[1]) as f:
         state = json.load(f)
     for mid, mdata in state.get("modules", {}).items():
+        # Only allow expected module-id shape to prevent unsafe shell syntax in generated output
+        if not isinstance(mid, str) or not re.fullmatch(r"[a-z0-9-]+", mid):
+            continue
         s = mdata.get("status", "")
         p = str(mdata.get("previous_value", "") or "")
         t = mdata.get("applied_at", "")
@@ -577,6 +581,23 @@ except Exception as e:
 PYREAD
 
     if [[ -s "$tmp" ]]; then
+        # Validate generated assignments before sourcing (defense-in-depth)
+        if ! awk '
+            BEGIN { ok=1 }
+            /^STATE_MODULES\\[[a-z0-9-]+\\]=\\x27/ { next }
+            /^STATE_PREVIOUS\\[[a-z0-9-]+\\]=\\x27/ { next }
+            /^STATE_TIMESTAMPS\\[[a-z0-9-]+\\]=\\x27/ { next }
+            /^STATE_PACKAGES=\\(/ { next }
+            /^STATE_PROFILE=\\x27/ { next }
+            /^STATE_LAST_RUN=\\x27/ { next }
+            /^#/ { next }
+            { ok=0; exit 1 }
+            END { exit ok ? 0 : 1 }
+        ' "$tmp" 2>/dev/null; then
+            echo -e "  ${RED}Warning: state file contained unexpected data; ignoring.${NC}" >&2
+            rm -f "$tmp"
+            return 1
+        fi
         source "$tmp"
         rm -f "$tmp"
         STATE_EXISTS=true
