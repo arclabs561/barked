@@ -803,7 +803,8 @@ PYEOF
 
     # Also save to project directory as backup
     mkdir -p "$(dirname "$SCHED_CLEAN_CONFIG_PROJECT")" 2>/dev/null
-    cp "$SCHED_CLEAN_CONFIG_USER" "$SCHED_CLEAN_CONFIG_PROJECT" 2>/dev/null || true
+    cp -- "$SCHED_CLEAN_CONFIG_USER" "$SCHED_CLEAN_CONFIG_PROJECT" 2>/dev/null || true
+    chmod 600 "$SCHED_CLEAN_CONFIG_PROJECT" 2>/dev/null || true
 }
 
 setup_scheduled_clean() {
