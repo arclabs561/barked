@@ -35,9 +35,9 @@ $script:GITHUB_REPO = "sth8pwd5wx-max/barked"
 $script:DATE = Get-Date -Format "yyyy-MM-dd"
 $script:TIMESTAMP = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:AuditDir = Join-Path (Split-Path $script:ScriptDir) "audits"
+$script:AuditOutputDir = Join-Path (Split-Path $script:ScriptDir) "audits"
 $script:BaselineDir = Join-Path (Split-Path $script:ScriptDir) "baseline"
-$script:LogFile = Join-Path $script:AuditDir "hardening-log-$($script:DATE).txt"
+$script:LogFile = Join-Path $script:AuditOutputDir "hardening-log-$($script:DATE).txt"
 
 # Harness knobs (tests / automation)
 $script:NoUpdateCheck = $false
@@ -45,7 +45,7 @@ $script:CleanSelect = ""
 
 if ($NoUpdateCheck -or ($env:BARKED_NO_UPDATE_CHECK -eq "1")) { $script:NoUpdateCheck = $true }
 if ($CleanSelect) { $script:CleanSelect = $CleanSelect }
-if ($AuditDir) { $script:AuditDir = $AuditDir }
+if ($AuditDir) { $script:AuditOutputDir = $AuditDir }
 
 # ═══════════════════════════════════════════════════════════════════
 # GLOBALS
@@ -105,7 +105,7 @@ $script:RealUser = $env:USERNAME
 # ═══════════════════════════════════════════════════════════════════
 # CLEAN MODE GLOBALS
 # ═══════════════════════════════════════════════════════════════════
-$script:CleanLogFile = Join-Path $script:AuditDir "clean-log-$($script:DATE).txt"
+$script:CleanLogFile = Join-Path $script:AuditOutputDir "clean-log-$($script:DATE).txt"
 $script:CleanCategories = @{
     'system-caches' = $false; 'user-caches' = $false; 'browser-data' = $false
     'privacy-traces' = $false; 'dev-cruft' = $false; 'trash-downloads' = $false
@@ -1289,8 +1289,8 @@ function Print-ScoreBar {
 
 function Write-AuditReport {
     param([string[]]$ModList, [int]$Pct, [int]$AC, [int]$TC)
-    New-Item -ItemType Directory -Path $script:AuditDir -Force | Out-Null
-    $reportFile = Join-Path $script:AuditDir "audit-$($script:DATE).md"
+    New-Item -ItemType Directory -Path $script:AuditOutputDir -Force | Out-Null
+    $reportFile = Join-Path $script:AuditOutputDir "audit-$($script:DATE).md"
     $sevOrder = @("CRITICAL", "HIGH", "MEDIUM", "LOW")
 
     $report = @()
@@ -1334,8 +1334,8 @@ function Write-AuditReport {
 }
 
 function Write-DryRunReport {
-    New-Item -ItemType Directory -Path $script:AuditDir -Force | Out-Null
-    $reportFile = Join-Path $script:AuditDir "dry-run-$($script:DATE).md"
+    New-Item -ItemType Directory -Path $script:AuditOutputDir -Force | Out-Null
+    $reportFile = Join-Path $script:AuditOutputDir "dry-run-$($script:DATE).md"
 
     $report = @()
     $report += "# Dry Run Report — $($script:DATE)"
@@ -3557,8 +3557,8 @@ function Print-ManualChecklist {
 }
 
 function Write-Report {
-    $reportFile = Join-Path $script:AuditDir "hardening-report-$($script:DATE).md"
-    New-Item -ItemType Directory -Path $script:AuditDir -Force | Out-Null
+    $reportFile = Join-Path $script:AuditOutputDir "hardening-report-$($script:DATE).md"
+    New-Item -ItemType Directory -Path $script:AuditOutputDir -Force | Out-Null
     $report = @()
     $report += "# Hardening Report — $($script:DATE)"
     $report += ""
