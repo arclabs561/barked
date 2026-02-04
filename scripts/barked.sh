@@ -6365,10 +6365,19 @@ browser_running() {
 safe_rm_contents() {
     local dir="$1"
     local use_root="${2:-false}"
+    SAFE_RM_FILES=0
+    SAFE_RM_BYTES=0
     if [[ ! -d "$dir" ]]; then return 1; fi
     local real_dir
     real_dir=$(cd "$dir" 2>/dev/null && pwd -P)
     if [[ -z "$real_dir" ]]; then return 1; fi
+
+    # Guard rails: refuse obviously dangerous targets if inputs are ever miswired.
+    # (All current callers pass fixed, known-safe paths.)
+    if [[ "$real_dir" == "/" ]] || [[ "$real_dir" == "$HOME" ]] || [[ "$real_dir" == "${HOME%/}/" ]]; then
+        clean_log "FAIL" "Refusing to clean dangerous path: $real_dir"
+        return 1
+    fi
 
     local files_removed=0 bytes_freed=0 files_processed=0
     while IFS= read -r -d '' file; do
