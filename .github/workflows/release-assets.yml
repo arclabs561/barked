@@ -1,0 +1,31 @@
+name: release-assets
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dist + SHA256 sums
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+          cp scripts/barked.sh dist/barked.sh
+          cp scripts/barked.ps1 dist/barked.ps1
+          (cd dist && sha256sum barked.sh > barked.sh.sha256)
+          (cd dist && sha256sum barked.ps1 > barked.ps1.sha256)
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

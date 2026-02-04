@@ -39,6 +39,26 @@ irm https://raw.githubusercontent.com/sth8pwd5wx-max/barked/main/install.ps1 | i
 
 Run `barked` from anywhere. The wizard takes it from there.
 
+### Optional: SHA256 verification (supply-chain hardening)
+
+If you set `BARKED_VERIFY_SHA256=1`, the installers and update commands will verify a companion `.sha256` file from GitHub Releases before running the downloaded script.
+
+macOS / Linux:
+```bash
+curl -fsSL https://raw.githubusercontent.com/sth8pwd5wx-max/barked/main/install.sh | BARKED_VERIFY_SHA256=1 bash
+```
+
+System-wide:
+```bash
+curl -fsSL https://raw.githubusercontent.com/sth8pwd5wx-max/barked/main/install.sh | sudo BARKED_VERIFY_SHA256=1 bash
+```
+
+Windows:
+```powershell
+$env:BARKED_VERIFY_SHA256 = "1"
+irm https://raw.githubusercontent.com/sth8pwd5wx-max/barked/main/install.ps1 | iex
+```
+
 ### Update
 
 ```bash
