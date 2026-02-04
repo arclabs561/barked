@@ -4120,46 +4120,73 @@ function Remove-DirectoryContents {
     $script:SafeRmFiles = 0
     $script:SafeRmBytes = [long]0
 
-    if (-not (Test-Path $Path)) { return }
+    if (-not (Test-Path -LiteralPath $Path)) { return }
 
     # Resolve to physical path (no symlink following)
     try {
-        $realPath = (Resolve-Path $Path -ErrorAction Stop).Path
+        $realPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
     } catch {
         return
     }
 
     $now = Get-Date
-    $files = Get-ChildItem -Path $realPath -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { -not $_.Attributes.HasFlag([System.IO.FileAttributes]::ReparsePoint) }
+    # Traverse iteratively and do not recurse into reparse-point directories (junctions/symlinks).
+    $reparse = [System.IO.FileAttributes]::ReparsePoint
+    $dirsToScan = New-Object System.Collections.Generic.Stack[string]
+    $dirsToScan.Push($realPath)
+    $seenDirs = New-Object System.Collections.Generic.List[string]
 
-    if (-not $files) { return }
+    while ($dirsToScan.Count -gt 0) {
+        $dir = $dirsToScan.Pop()
+        $seenDirs.Add($dir) | Out-Null
 
-    foreach ($file in $files) {
-        # Skip files modified less than 60 seconds ago
-        if (($now - $file.LastWriteTime).TotalSeconds -lt 60) {
-            Write-CleanLogEntry "SKIP" "$($file.FullName) (modified < 60s ago)"
-            continue
-        }
+        $children = Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+        if (-not $children) { continue }
 
-        $fsize = $file.Length
-        try {
-            Remove-Item -Path $file.FullName -Force -ErrorAction Stop
-            $script:SafeRmBytes += $fsize
-            $script:SafeRmFiles++
-            Write-CleanLogEntry "CLEAN" "Removed $($file.FullName) ($(Format-CleanBytes $fsize))"
-        } catch {
-            Write-CleanLogEntry "FAIL" "$($file.FullName) (permission denied)"
+        foreach ($child in $children) {
+            # Never follow reparse points (files or directories)
+            if (($child.Attributes -band $reparse) -ne 0) {
+                if ($child.PSIsContainer) {
+                    Write-CleanLogEntry "SKIP" "$($child.FullName) (reparse point directory)"
+                }
+                continue
+            }
+
+            if ($child.PSIsContainer) {
+                $dirsToScan.Push($child.FullName)
+                continue
+            }
+
+            # Skip files modified less than 60 seconds ago
+            if (($now - $child.LastWriteTime).TotalSeconds -lt 60) {
+                Write-CleanLogEntry "SKIP" "$($child.FullName) (modified < 60s ago)"
+                continue
+            }
+
+            $fsize = $child.Length
+            try {
+                Remove-Item -LiteralPath $child.FullName -Force -ErrorAction Stop
+                $script:SafeRmBytes += $fsize
+                $script:SafeRmFiles++
+                Write-CleanLogEntry "CLEAN" "Removed $($child.FullName) ($(Format-CleanBytes $fsize))"
+            } catch {
+                Write-CleanLogEntry "FAIL" "$($child.FullName) (permission denied)"
+            }
         }
     }
 
-    # Remove empty directories
-    Get-ChildItem -Path $realPath -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-        Sort-Object { $_.FullName.Length } -Descending |
+    # Remove empty directories (deepest-first), excluding the root path itself
+    $seenDirs |
+        Where-Object { $_ -ne $realPath } |
+        Sort-Object Length -Descending |
         ForEach-Object {
-            if (@(Get-ChildItem -Path $_.FullName -Force -ErrorAction SilentlyContinue).Count -eq 0) {
-                Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
-            }
+            try {
+                if (-not (Test-Path -LiteralPath $_)) { return }
+                $hasAny = Get-ChildItem -LiteralPath $_ -Force -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $hasAny) {
+                    Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue
+                }
+            } catch { }
         }
 }
 
