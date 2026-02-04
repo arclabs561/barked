@@ -16,12 +16,15 @@ param(
     [switch]$UninstallSelf,
     [switch]$Elevated,
     [switch]$Audit,
+    [string]$AuditDir,
     [switch]$CleanSchedule,
     [switch]$CleanUnschedule,
     [switch]$CleanScheduled,
     [switch]$Auto,
     [string]$Profile,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [switch]$NoUpdateCheck,
+    [string]$CleanSelect
 )
 
 Set-StrictMode -Version Latest
@@ -35,6 +38,14 @@ $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:AuditDir = Join-Path (Split-Path $script:ScriptDir) "audits"
 $script:BaselineDir = Join-Path (Split-Path $script:ScriptDir) "baseline"
 $script:LogFile = Join-Path $script:AuditDir "hardening-log-$($script:DATE).txt"
+
+# Harness knobs (tests / automation)
+$script:NoUpdateCheck = $false
+$script:CleanSelect = ""
+
+if ($NoUpdateCheck -or ($env:BARKED_NO_UPDATE_CHECK -eq "1")) { $script:NoUpdateCheck = $true }
+if ($CleanSelect) { $script:CleanSelect = $CleanSelect }
+if ($AuditDir) { $script:AuditDir = $AuditDir }
 
 # ═══════════════════════════════════════════════════════════════════
 # GLOBALS
@@ -4711,8 +4722,32 @@ function Invoke-Clean {
     Write-ColorLine "║" Green
     Write-ColorLine "╚══════════════════════════════════════════════════╝" Green
 
-    Show-CleanPicker
-    Show-CleanDrilldown
+    if ($script:CleanSelect) {
+        # Non-interactive selection for tests/harnesses
+        foreach ($cat in $script:CleanCatOrder) { $script:CleanCategories[$cat] = $false }
+        $sel = $script:CleanSelect -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        foreach ($cat in $sel) {
+            if (-not $script:CleanCategories.ContainsKey($cat)) {
+                Write-Host "  ERROR: Unknown clean category key: $cat" -ForegroundColor Red
+                Write-Host "  Valid keys: $($script:CleanCatOrder -join ',')" -ForegroundColor DarkYellow
+                return
+            }
+            $script:CleanCategories[$cat] = $true
+        }
+
+        # Populate targets from categories
+        $script:CleanTargets = @{}
+        foreach ($cat in $script:CleanCatOrder) {
+            if ($script:CleanCategories[$cat]) {
+                foreach ($target in $script:CleanCatTargets[$cat]) {
+                    if (Test-CleanTargetAvailable $target) { $script:CleanTargets[$target] = $true }
+                }
+            }
+        }
+    } else {
+        Show-CleanPicker
+        Show-CleanDrilldown
+    }
     Show-CleanPreview
 
     # Dry-run: show preview and exit
@@ -4815,6 +4850,7 @@ function Invoke-Update {
 }
 
 function Invoke-PassiveUpdateCheck {
+    if ($script:NoUpdateCheck) { return }
     $cacheFile = Join-Path $env:TEMP "barked-update-check"
     $cacheMax = 86400
     $now = [int][double]::Parse((Get-Date -UFormat %s))
