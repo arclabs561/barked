@@ -128,8 +128,8 @@ if [[ "${BARKED_VERIFY_SHA256:-}" == "1" ]]; then
         exit 1
     fi
 
-    expected="$(awk "{print \\$1}" "$TMP_SUM" 2>/dev/null | head -n 1)"
-    actual="$("${checksum_cmd[@]}" "$TMP_FILE" 2>/dev/null | awk "{print \\$1}" | head -n 1)"
+    expected="$(awk '{print $1}' "$TMP_SUM" 2>/dev/null | head -n 1)"
+    actual="$("${checksum_cmd[@]}" "$TMP_FILE" 2>/dev/null | awk '{print $1}' | head -n 1)"
     if [[ -z "$expected" || -z "$actual" || "$expected" != "$actual" ]]; then
         echo -e "${RED}Error: SHA256 verification failed.${NC}" >&2
         echo "  expected: ${expected:-<missing>}" >&2
