@@ -1690,10 +1690,10 @@ function Select-Profile {
     Print-Section "Profile Selection"
     Write-ColorLine "Select a hardening profile:" Green
     Write-Host ""
-    Write-Host "  " -NoNewline; Write-Color "[1] Green; Write-Host " Standard  — Encrypted disk, firewall, secure DNS, auto-updates, basic browser hardening"
-    Write-Host "  " -NoNewline; Write-Color "[2] Green; Write-Host " High      — Standard + outbound firewall, hostname scrubbing, monitoring tools, SSH hardening, telemetry disabled"
-    Write-Host "  " -NoNewline; Write-Color "[3] Green; Write-Host " Paranoid  — High + MAC rotation, traffic obfuscation, VPN kill switch, full audit system, metadata stripping, border crossing prep"
-    Write-Host "  " -NoNewline; Write-Color "[4] Green; Write-Host " Advanced  — Custom questionnaire (choose per-category)"
+    Write-Host "  " -NoNewline; Write-Color "[1]" Green; Write-Host " Standard  — Encrypted disk, firewall, secure DNS, auto-updates, basic browser hardening"
+    Write-Host "  " -NoNewline; Write-Color "[2]" Green; Write-Host " High      — Standard + outbound firewall, hostname scrubbing, monitoring tools, SSH hardening, telemetry disabled"
+    Write-Host "  " -NoNewline; Write-Color "[3]" Green; Write-Host " Paranoid  — High + MAC rotation, traffic obfuscation, VPN kill switch, full audit system, metadata stripping, border crossing prep"
+    Write-Host "  " -NoNewline; Write-Color "[4]" Green; Write-Host " Advanced  — Custom questionnaire (choose per-category)"
     Write-Host ""
     Write-Host "  " -NoNewline; Write-Color "[M]" Magenta; Write-Host " Modify    — Add or remove individual modules"
     Write-Host "  " -NoNewline; Write-Color "[U]" Red;     Write-Host " Uninstall — Remove all hardening changes"
@@ -3361,8 +3361,8 @@ function Run-Uninstall {
         Write-ColorLine ($script:StateData.packages_installed -join ", ") Green
         Write-Host ""
         Write-Host "  Remove installed tools as well?" -ForegroundColor Green
-        Write-Host "  " -NoNewline; Write-Color "[Y] Green; Write-Host " Yes — uninstall all tools listed above"
-        Write-Host "  " -NoNewline; Write-Color "[N] Green; Write-Host " No  — keep tools, only revert settings"
+        Write-Host "  " -NoNewline; Write-Color "[Y]" Green; Write-Host " Yes — uninstall all tools listed above"
+        Write-Host "  " -NoNewline; Write-Color "[N]" Green; Write-Host " No  — keep tools, only revert settings"
         Write-Host "  " -NoNewline; Write-Color "[Q]" DarkYellow; Write-Host " Quit"
         Write-Host ""
         while ($true) {
@@ -3667,12 +3667,12 @@ function Show-CleanPicker {
             $mark = " "
             if ($script:CleanCategories[$cat]) { $mark = "*" }
             Write-Host "  " -NoNewline
-            Write-Color "[$num] Green
+            Write-Color "[$num]" Green
             Write-Host " [$mark] $($script:CleanCatNames[$cat])"
         }
         Write-Host ""
-        Write-Host "  " -NoNewline; Write-Color "[A] Green; Write-Host " Select All    " -NoNewline
-        Write-Color "[N] Green; Write-Host " Select None"
+        Write-Host "  " -NoNewline; Write-Color "[A]" Green; Write-Host " Select All    " -NoNewline
+        Write-Color "[N]" Green; Write-Host " Select None"
         Write-Host ""
         Write-Host "  Toggle (1-7, A, N) or Enter to continue: " -NoNewline -ForegroundColor Green
         $input = Read-Host
