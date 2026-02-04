@@ -4834,6 +4834,7 @@ function Invoke-Update {
     $installPath = Join-Path $installDir "barked.ps1"
     $tmpFile = Join-Path $env:TEMP "barked-new-$(Get-Random).ps1"
     $downloadUrl = "https://github.com/$($script:GITHUB_REPO)/releases/latest/download/barked.ps1"
+    $checksumUrl = "https://github.com/$($script:GITHUB_REPO)/releases/latest/download/barked.ps1.sha256"
 
     try {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -TimeoutSec 30 -ErrorAction Stop
@@ -4841,6 +4842,27 @@ function Invoke-Update {
         Write-ColorLine "Failed to download update." Red
         Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
         exit 1
+    }
+
+    # Optional: verify SHA256 checksum if explicitly requested (opt-in).
+    if ($env:BARKED_VERIFY_SHA256 -eq "1") {
+        $tmpSum = Join-Path $env:TEMP "barked-new-$(Get-Random).sha256"
+        try {
+            Invoke-WebRequest -Uri $checksumUrl -OutFile $tmpSum -TimeoutSec 30 -ErrorAction Stop
+            $expected = (Get-Content -Path $tmpSum -ErrorAction Stop | Select-Object -First 1).Split(' ')[0].Trim()
+            $actual = (Get-FileHash -Path $tmpFile -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower()
+            Remove-Item -Path $tmpSum -Force -ErrorAction SilentlyContinue
+            if (-not $expected -or ($expected.ToLower() -ne $actual)) {
+                Write-ColorLine "SHA256 verification failed — aborting update." Red
+                Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
+                exit 1
+            }
+        } catch {
+            Remove-Item -Path $tmpSum -Force -ErrorAction SilentlyContinue
+            Write-ColorLine "SHA256 verification failed — aborting update." Red
+            Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
+            exit 1
+        }
     }
 
     # Validate syntax

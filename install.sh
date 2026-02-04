@@ -96,6 +96,7 @@ echo ""
 # DOWNLOAD
 # ═══════════════════════════════════════════════════════════════════
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/barked.sh"
+CHECKSUM_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/barked.sh.sha256"
 TMP_FILE="$(mktemp /tmp/barked-install-XXXXXX.sh)"
 trap 'rm -f "$TMP_FILE"' EXIT
 
@@ -106,6 +107,35 @@ echo ""
 if ! curl -fsSL --connect-timeout 10 --max-time 60 -o "$TMP_FILE" "$DOWNLOAD_URL"; then
     echo -e "${RED}Error: Failed to download barked from ${DOWNLOAD_URL}${NC}" >&2
     exit 1
+fi
+
+# Optional: verify SHA256 checksum if explicitly requested (opt-in).
+# This keeps current install behavior but enables stricter verification in CI / hardened setups.
+if [[ "${BARKED_VERIFY_SHA256:-}" == "1" ]]; then
+    if command -v shasum &>/dev/null; then
+        checksum_cmd=(shasum -a 256)
+    elif command -v sha256sum &>/dev/null; then
+        checksum_cmd=(sha256sum)
+    else
+        echo -e "${RED}Error: BARKED_VERIFY_SHA256=1 but no sha256 tool found (shasum/sha256sum).${NC}" >&2
+        exit 1
+    fi
+
+    TMP_SUM="$(mktemp /tmp/barked-install-XXXXXX.sha256)"
+    trap 'rm -f "$TMP_FILE" "$TMP_SUM"' EXIT
+    if ! curl -fsSL --connect-timeout 10 --max-time 60 -o "$TMP_SUM" "$CHECKSUM_URL"; then
+        echo -e "${RED}Error: Failed to download checksum from ${CHECKSUM_URL}${NC}" >&2
+        exit 1
+    fi
+
+    expected="$(awk "{print \\$1}" "$TMP_SUM" 2>/dev/null | head -n 1)"
+    actual="$("${checksum_cmd[@]}" "$TMP_FILE" 2>/dev/null | awk "{print \\$1}" | head -n 1)"
+    if [[ -z "$expected" || -z "$actual" || "$expected" != "$actual" ]]; then
+        echo -e "${RED}Error: SHA256 verification failed.${NC}" >&2
+        echo "  expected: ${expected:-<missing>}" >&2
+        echo "  actual:   ${actual:-<missing>}" >&2
+        exit 1
+    fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════

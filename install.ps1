@@ -7,6 +7,7 @@ $GithubRepo  = "sth8pwd5wx-max/barked"
 $InstallDir  = "C:\Program Files\Barked"
 $BinaryName  = "barked.ps1"
 $CmdWrapper  = "barked.cmd"
+$VerifySha256 = ($env:BARKED_VERIFY_SHA256 -eq "1")
 
 # ═══════════════════════════════════════════════════════════════════
 # HEADER
@@ -42,6 +43,7 @@ Write-Host ""
 # ═══════════════════════════════════════════════════════════════════
 Write-Host "  Fetching latest release..." -ForegroundColor DarkYellow
 $downloadUrl = "https://github.com/$GithubRepo/releases/latest/download/barked.ps1"
+$checksumUrl = "https://github.com/$GithubRepo/releases/latest/download/barked.ps1.sha256"
 Write-Host "  $downloadUrl"
 Write-Host ""
 
@@ -53,6 +55,30 @@ try {
     Write-Host "  Error: Download failed. Check your connection and that the repo exists." -ForegroundColor Red
     Remove-Item -Path $tmpFile -ErrorAction SilentlyContinue
     exit 1
+}
+
+# Optional: verify SHA256 checksum if explicitly requested (opt-in).
+if ($VerifySha256) {
+    $tmpSum = Join-Path $env:TEMP "barked-install-$(Get-Random).sha256"
+    try {
+        Invoke-WebRequest -Uri $checksumUrl -OutFile $tmpSum -TimeoutSec 60 -ErrorAction Stop
+        $expected = (Get-Content -Path $tmpSum -ErrorAction Stop | Select-Object -First 1).Split(' ')[0].Trim()
+        $actual = (Get-FileHash -Path $tmpFile -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower()
+        if (-not $expected -or ($expected.ToLower() -ne $actual)) {
+            Write-Host "  Error: SHA256 verification failed." -ForegroundColor Red
+            Write-Host "  expected: $expected" -ForegroundColor DarkYellow
+            Write-Host "  actual:   $actual" -ForegroundColor DarkYellow
+            Remove-Item -Path $tmpFile -ErrorAction SilentlyContinue
+            Remove-Item -Path $tmpSum -ErrorAction SilentlyContinue
+            exit 1
+        }
+    } catch {
+        Write-Host "  Error: SHA256 verification failed: $_" -ForegroundColor Red
+        Remove-Item -Path $tmpFile -ErrorAction SilentlyContinue
+        Remove-Item -Path $tmpSum -ErrorAction SilentlyContinue
+        exit 1
+    }
+    Remove-Item -Path $tmpSum -ErrorAction SilentlyContinue
 }
 
 # ═══════════════════════════════════════════════════════════════════

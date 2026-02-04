@@ -7207,6 +7207,7 @@ run_update() {
         exit 1
     }
     local download_url="https://github.com/${GITHUB_REPO}/releases/latest/download/barked.sh"
+    local checksum_url="https://github.com/${GITHUB_REPO}/releases/latest/download/barked.sh.sha256"
 
     echo -e "  Downloading v${latest}..."
     curl -fsSL --connect-timeout 5 --max-time 30 "$download_url" -o "$tmp_file" 2>/dev/null || {
@@ -7214,6 +7215,46 @@ run_update() {
         rm -f -- "$tmp_file"
         exit 1
     }
+
+    # Optional: verify SHA256 checksum if explicitly requested (opt-in).
+    if [[ "${BARKED_VERIFY_SHA256:-}" == "1" ]]; then
+        local checksum_cmd=()
+        if command -v shasum &>/dev/null; then
+            checksum_cmd=(shasum -a 256)
+        elif command -v sha256sum &>/dev/null; then
+            checksum_cmd=(sha256sum)
+        else
+            echo -e "${RED}Error: BARKED_VERIFY_SHA256=1 but no sha256 tool found (shasum/sha256sum).${NC}"
+            rm -f -- "$tmp_file"
+            exit 1
+        fi
+
+        local sum_file
+        sum_file="$(mktemp /tmp/barked-new-XXXXXX.sha256)" || true
+        if [[ -z "${sum_file:-}" ]]; then
+            echo -e "${RED}Failed to create checksum temp file.${NC}"
+            rm -f -- "$tmp_file"
+            exit 1
+        fi
+
+        curl -fsSL --connect-timeout 5 --max-time 30 "$checksum_url" -o "$sum_file" 2>/dev/null || {
+            echo -e "${RED}Failed to download checksum file.${NC}"
+            rm -f -- "$tmp_file" "$sum_file"
+            exit 1
+        }
+
+        local expected actual
+        expected="$(sed -n '1p' "$sum_file" 2>/dev/null | awk '{print $1}' | head -n 1)"
+        actual="$("${checksum_cmd[@]}" "$tmp_file" 2>/dev/null | awk '{print $1}' | head -n 1)"
+        rm -f -- "$sum_file"
+        if [[ -z "$expected" || -z "$actual" || "$expected" != "$actual" ]]; then
+            echo -e "${RED}SHA256 verification failed — aborting update.${NC}"
+            echo "  expected: ${expected:-<missing>}"
+            echo "  actual:   ${actual:-<missing>}"
+            rm -f -- "$tmp_file"
+            exit 1
+        fi
+    fi
 
     if ! bash -n "$tmp_file" 2>/dev/null; then
         echo -e "${RED}Downloaded file has syntax errors — aborting update.${NC}"
