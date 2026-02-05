@@ -10236,28 +10236,84 @@ main() {
     fi
 
     # ── Monitor mode subcommands ──
-    if [[ "$MONITOR_INIT" == true ]]; then
-        detect_os
-        monitor_init_interactive
-        exit 0
-    fi
-
-    if [[ "$MONITOR_BASELINE" == true ]]; then
-        detect_os
-        print_header
-        monitor_take_baseline
-        exit 0
-    fi
-
-    if [[ "$MONITOR_TEST_ALERT" == true ]]; then
-        detect_os
-        print_header
-        monitor_test_alert
-        exit 0
-    fi
-
     if [[ "$MONITOR_MODE" == true ]]; then
         detect_os
+
+        # Daemon management commands
+        if [[ "$MONITOR_INSTALL" == true ]]; then
+            print_header
+            monitor_install_wizard
+            exit 0
+        fi
+
+        if [[ "$MONITOR_UNINSTALL" == true ]]; then
+            print_header
+            monitor_cmd_uninstall
+            exit 0
+        fi
+
+        if [[ "$MONITOR_ENABLE" == true ]]; then
+            monitor_cmd_enable
+            exit 0
+        fi
+
+        if [[ "$MONITOR_DISABLE" == true ]]; then
+            monitor_cmd_disable
+            exit 0
+        fi
+
+        if [[ "$MONITOR_RESTART" == true ]]; then
+            monitor_cmd_restart
+            exit 0
+        fi
+
+        if [[ "$MONITOR_STATUS" == true ]]; then
+            print_header
+            monitor_cmd_status
+            exit 0
+        fi
+
+        if [[ "$MONITOR_LOGS" == true ]]; then
+            monitor_cmd_logs "$MONITOR_LOGS_FOLLOW"
+            exit 0
+        fi
+
+        if [[ "$MONITOR_ALERTS" == true ]]; then
+            print_header
+            monitor_cmd_alerts
+            exit 0
+        fi
+
+        if [[ "$MONITOR_HEALTH" == true ]]; then
+            print_header
+            monitor_cmd_health
+            exit 0
+        fi
+
+        if [[ "$MONITOR_CONFIG" == true ]]; then
+            monitor_cmd_config
+            exit 0
+        fi
+
+        # Existing subcommands
+        if [[ "$MONITOR_INIT" == true ]]; then
+            monitor_init_interactive
+            exit 0
+        fi
+
+        if [[ "$MONITOR_BASELINE" == true ]]; then
+            print_header
+            monitor_take_baseline
+            exit 0
+        fi
+
+        if [[ "$MONITOR_TEST_ALERT" == true ]]; then
+            print_header
+            monitor_test_alert
+            exit 0
+        fi
+
+        # Default: run monitor
         print_header
         run_monitor
         exit 0
