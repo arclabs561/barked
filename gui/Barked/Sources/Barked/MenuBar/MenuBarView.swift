@@ -25,6 +25,11 @@ struct MenuBarView: View {
         Text(configReader.scheduleDisplayText)
             .foregroundStyle(.secondary)
 
+        Button("Check for Updates...") {
+            Task { await runner.runPrivileged(["--update"]) }
+        }
+        .disabled(runner.isRunning)
+
         Divider()
 
         Button("Quit") {
