@@ -6633,6 +6633,55 @@ monitor_init_interactive() {
 # ═══════════════════════════════════════════════════════════════════
 # MONITOR MODE — ALERT SYSTEM
 # ═══════════════════════════════════════════════════════════════════
+
+# build_alert_message: Assemble detailed alert message based on severity
+# Args: $1=alert_key, $2=severity, $3=dynamic_details (optional substitutions)
+# Sets: BUILT_TITLE, BUILT_IMPACT, BUILT_DETAILS, BUILT_REMEDIATION
+build_alert_message() {
+    local alert_key="$1"
+    local severity="$2"
+    local dynamic_details="${3:-}"
+
+    # Get base messages from catalog
+    local base_title="${ALERT_TITLES[$alert_key]:-$alert_key}"
+    local base_impact="${ALERT_IMPACTS[$alert_key]:-}"
+    local base_remediation="${ALERT_REMEDIATIONS[$alert_key]:-}"
+
+    # Add severity emoji
+    local emoji="🟡"
+    [[ "$severity" == "critical" ]] && emoji="🔴"
+
+    # Build title with severity
+    if [[ "$severity" == "critical" ]]; then
+        BUILT_TITLE="${emoji} CRITICAL: ${base_title}"
+    else
+        BUILT_TITLE="${emoji} ${base_title}"
+    fi
+
+    # Impact (critical gets full, warning gets abbreviated)
+    if [[ "$NOTIFY_SHOW_IMPACT" == "true" ]]; then
+        if [[ "$severity" == "critical" ]]; then
+            BUILT_IMPACT="$base_impact"
+        else
+            # Truncate impact for warnings
+            BUILT_IMPACT="${base_impact:0:80}"
+            [[ ${#base_impact} -gt 80 ]] && BUILT_IMPACT="${BUILT_IMPACT}..."
+        fi
+    else
+        BUILT_IMPACT=""
+    fi
+
+    # Details (passed in dynamically)
+    BUILT_DETAILS="$dynamic_details"
+
+    # Remediation
+    if [[ "$NOTIFY_SHOW_REMEDIATION" == "true" ]]; then
+        BUILT_REMEDIATION="$base_remediation"
+    else
+        BUILT_REMEDIATION=""
+    fi
+}
+
 monitor_send_alert() {
     local severity="$1"    # warning|critical
     local category="$2"    # supply-chain|cloud-sync|network|dev-env
