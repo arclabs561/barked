@@ -426,7 +426,6 @@ detect_os() {
 # ═══════════════════════════════════════════════════════════════════
 # PRIVILEGE MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════
-SUDO_KEEPALIVE_PID=""
 
 setup_privileges() {
     REAL_USER="$(whoami)"
@@ -435,33 +434,29 @@ setup_privileges() {
 }
 
 acquire_sudo() {
-    # Already acquired
-    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
-        return 0
-    fi
     # Already root (e.g., running in container or as root user)
     if [[ $EUID -eq 0 ]]; then
         return 0
     fi
-    echo ""
-    echo -e "  ${BROWN}Some hardening steps need admin privileges.${NC}"
-    if ! sudo -v 2>/dev/null; then
-        echo -e "  ${RED}Failed to acquire sudo. Some modules may fail.${NC}"
+
+    # --no-sudo mode never acquires
+    if [[ "$NO_SUDO_MODE" == true ]]; then
         return 1
     fi
-    # Keep sudo alive in the background
-    (while true; do sudo -n -v 2>/dev/null; sleep 50; done) &
-    SUDO_KEEPALIVE_PID=$!
-    trap 'cleanup_sudo' EXIT
+
+    echo ""
+    echo -e "  ${BROWN}Root privileges required for the following operations.${NC}"
+    if ! sudo -v 2>/dev/null; then
+        echo -e "  ${RED}Failed to acquire sudo.${NC}"
+        return 1
+    fi
     return 0
 }
 
 cleanup_sudo() {
-    if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then
-        kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
-        wait "$SUDO_KEEPALIVE_PID" 2>/dev/null
-        SUDO_KEEPALIVE_PID=""
-    fi
+    # No longer needed - keepalive removed
+    # Kept for compatibility with any existing trap references
+    :
 }
 
 run_as_root() {
