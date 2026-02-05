@@ -5682,6 +5682,153 @@ monitor_init_interactive() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MONITOR MODE — ALERT SYSTEM
+# ═══════════════════════════════════════════════════════════════════
+monitor_send_alert() {
+    local severity="$1"    # warning|critical
+    local category="$2"    # supply-chain|cloud-sync|network|dev-env
+    local title="$3"
+    local details="$4"
+
+    local timestamp
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local hostname
+    hostname="$(scutil --get ComputerName 2>/dev/null || hostname)"
+
+    # Check severity threshold
+    if [[ "$ALERT_SEVERITY_MIN" == "critical" && "$severity" != "critical" ]]; then
+        return 0
+    fi
+
+    # Check deduplication cooldown
+    local alert_key="${category}_${title}"
+    local last_alert="${MONITOR_LAST_ALERT[$alert_key]:-0}"
+    local now
+    now="$(date +%s)"
+    if (( now - last_alert < ALERT_COOLDOWN )); then
+        return 0
+    fi
+    MONITOR_LAST_ALERT[$alert_key]="$now"
+
+    # Log the alert (monitor_log will be added in Task 4)
+    # monitor_log "ALERT" "[$severity] $category: $title - $details"
+
+    # Build JSON payload
+    local json_payload
+    json_payload=$(cat << EOFJSON
+{
+  "severity": "${severity}",
+  "category": "${category}",
+  "title": "${title}",
+  "details": "${details}",
+  "hostname": "${hostname}",
+  "timestamp": "${timestamp}"
+}
+EOFJSON
+)
+
+    # Send to configured channels
+    [[ -n "$ALERT_WEBHOOK_URL" ]] && monitor_send_webhook "$json_payload"
+    [[ -n "$ALERT_SLACK_URL" ]] && monitor_send_slack "$severity" "$title" "$details"
+    [[ -n "$ALERT_DISCORD_URL" ]] && monitor_send_discord "$severity" "$title" "$details"
+    [[ "$ALERT_MACOS_NOTIFY" == "true" && "$OS" == "macos" ]] && monitor_send_macos "$severity" "$title" "$details"
+    [[ "$ALERT_EMAIL_ENABLED" == "true" ]] && monitor_send_email "$severity" "$title" "$details"
+}
+
+monitor_send_webhook() {
+    local payload="$1"
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$ALERT_WEBHOOK_URL" >/dev/null 2>&1 || true
+}
+
+monitor_send_slack() {
+    local severity="$1" title="$2" details="$3"
+    local color="#ff0000"
+    [[ "$severity" == "warning" ]] && color="#ffcc00"
+
+    local slack_payload
+    slack_payload=$(cat << EOFJSON
+{
+  "attachments": [{
+    "color": "${color}",
+    "title": "Barked Security Alert: ${title}",
+    "text": "${details}",
+    "footer": "barked monitor"
+  }]
+}
+EOFJSON
+)
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "$slack_payload" \
+        "$ALERT_SLACK_URL" >/dev/null 2>&1 || true
+}
+
+monitor_send_discord() {
+    local severity="$1" title="$2" details="$3"
+    local color="16711680"  # red
+    [[ "$severity" == "warning" ]] && color="16776960"  # yellow
+
+    local discord_payload
+    discord_payload=$(cat << EOFJSON
+{
+  "embeds": [{
+    "color": ${color},
+    "title": "Barked Security Alert: ${title}",
+    "description": "${details}",
+    "footer": {"text": "barked monitor"}
+  }]
+}
+EOFJSON
+)
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "$discord_payload" \
+        "$ALERT_DISCORD_URL" >/dev/null 2>&1 || true
+}
+
+monitor_send_macos() {
+    local severity="$1" title="$2" details="$3"
+    osascript -e "display notification \"${details}\" with title \"Barked: ${title}\" sound name \"Basso\"" 2>/dev/null || true
+}
+
+monitor_send_email() {
+    local severity="$1" title="$2" details="$3"
+    # SendGrid API format
+    local email_payload
+    email_payload=$(cat << EOFJSON
+{
+  "personalizations": [{"to": [{"email": "${ALERT_EMAIL_TO}"}]}],
+  "from": {"email": "barked@localhost"},
+  "subject": "Barked Alert: ${title}",
+  "content": [{"type": "text/plain", "value": "${details}"}]
+}
+EOFJSON
+)
+    curl -s -X POST \
+        -H "Authorization: Bearer ${ALERT_EMAIL_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "$email_payload" \
+        "$ALERT_EMAIL_API_URL" >/dev/null 2>&1 || true
+}
+
+monitor_test_alert() {
+    monitor_load_config
+    echo -e "  ${BROWN}Sending test alert to configured channels...${NC}"
+
+    # Temporarily disable cooldown for test
+    local old_cooldown="$ALERT_COOLDOWN"
+    ALERT_COOLDOWN=0
+
+    monitor_send_alert "warning" "test" "Test Alert" "This is a test alert from barked monitor mode."
+
+    ALERT_COOLDOWN="$old_cooldown"
+    echo -e "  ${GREEN}✓${NC} Test alert sent"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # ARGUMENT PARSING
 # ═══════════════════════════════════════════════════════════════════
 parse_args() {
