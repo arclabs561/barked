@@ -6806,8 +6806,7 @@ MONITOR_CATEGORIES="${categories}"
 
 # Alert channels
 ALERT_MACOS_NOTIFY=${macos_notify}
-ALERT_SLACK_URL="${slack_url}"
-ALERT_DISCORD_URL="${discord_url}"
+ALERT_LINUX_NOTIFY=${linux_notify}
 ALERT_WEBHOOK_URL="${webhook_url}"
 
 # Email (configure manually if needed)
