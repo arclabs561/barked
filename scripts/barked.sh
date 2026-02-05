@@ -6789,7 +6789,34 @@ EOFJSON
 
 monitor_send_macos() {
     local severity="$1" title="$2" details="$3"
-    osascript -e "display notification \"${details}\" with title \"Barked: ${title}\" sound name \"Basso\"" 2>/dev/null || true
+
+    # macOS notification center has ~200 char limit
+    # Build concise message with remediation hint
+    local short_details="${details:0:120}"
+    [[ ${#details} -gt 120 ]] && short_details="${short_details}..."
+
+    # Add remediation hint if available
+    local body="$short_details"
+    if [[ -n "$BUILT_REMEDIATION" ]]; then
+        local short_fix="${BUILT_REMEDIATION:0:60}"
+        [[ ${#BUILT_REMEDIATION} -gt 60 ]] && short_fix="${short_fix}..."
+        body="${short_details}\n\nFix: ${short_fix}"
+    fi
+
+    # Sound based on severity
+    local sound="Basso"
+    [[ "$severity" == "critical" ]] && sound="Sosumi"
+
+    # Build AppleScript with click action
+    local script
+    if [[ "$NOTIFY_MACOS_CLICK_ACTION" == "log" ]]; then
+        # Notification that opens log file when clicked
+        script="display notification \"${body}\" with title \"${title}\" sound name \"${sound}\""
+    else
+        script="display notification \"${body}\" with title \"${title}\" sound name \"${sound}\""
+    fi
+
+    osascript -e "$script" 2>/dev/null || true
 }
 
 monitor_send_email() {
