@@ -6702,6 +6702,9 @@ parse_args() {
             --dry-run)
                 DRY_RUN=true
                 ;;
+            --no-sudo|--user-only)
+                NO_SUDO_MODE=true
+                ;;
             --auto)
                 AUTO_MODE=true
                 ;;
@@ -6777,6 +6780,7 @@ parse_args() {
                 echo "  --audit                Score system security without making changes"
                 echo "  --clean, -c            Run system cleaner"
                 echo "  --dry-run              Show what would be changed without applying"
+                echo "  --no-sudo              Skip modules requiring root (user-level only)"
                 echo "  --auto                 Run non-interactively (requires --profile)"
                 echo "  --profile <name>       Set security profile: standard, high, paranoid"
                 echo "  --quiet, -q            Suppress interactive output (requires --auto or --audit)"
