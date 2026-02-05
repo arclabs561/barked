@@ -822,6 +822,75 @@ collect_root_commands() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# TWO-PHASE EXECUTION: MODULE COMMAND COLLECTORS
+# ═══════════════════════════════════════════════════════════════════
+collect_root_commands_for_module() {
+    local mod_id="$1"
+    local collector_func="collect_${mod_id//-/_}"
+
+    if declare -f "$collector_func" &>/dev/null; then
+        "$collector_func"
+    else
+        # Fallback: mark as needing manual review
+        log_entry "$mod_id" "collect" "warn" "No command collector - will run directly"
+    fi
+}
+
+collect_firewall_inbound() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on"
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setblockall on"
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setallowsigned off"
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setallowsignedapp off"
+        set_root_description "firewall-inbound" "Enable firewall, block incoming"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "firewall-inbound" "ufw --force enable"
+        queue_root_command "firewall-inbound" "ufw default deny incoming"
+        set_root_description "firewall-inbound" "Enable ufw, deny incoming"
+    fi
+}
+
+collect_firewall_stealth() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "firewall-stealth" "/usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode on"
+        set_root_description "firewall-stealth" "Enable stealth mode"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "firewall-stealth" "iptables -A INPUT -p icmp --icmp-type echo-request -j DROP"
+        set_root_description "firewall-stealth" "Drop ICMP echo requests"
+    fi
+}
+
+collect_dns_secure() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "dns-secure" "networksetup -setdnsservers Wi-Fi 9.9.9.9 149.112.112.112"
+        set_root_description "dns-secure" "Set DNS to Quad9"
+    elif [[ "$OS" == "linux" ]]; then
+        if [[ -d /etc/systemd/resolved.conf.d ]]; then
+            queue_root_command "dns-secure" "mkdir -p /etc/systemd/resolved.conf.d && cat > /etc/systemd/resolved.conf.d/quad9.conf << 'EOF'
+[Resolve]
+DNS=9.9.9.9 149.112.112.112
+DNSOverTLS=yes
+EOF"
+            queue_root_command "dns-secure" "systemctl restart systemd-resolved"
+        else
+            queue_root_command "dns-secure" "cp /etc/resolv.conf /etc/resolv.conf.bak"
+            queue_root_command "dns-secure" "echo -e 'nameserver 9.9.9.9\nnameserver 149.112.112.112' > /etc/resolv.conf"
+        fi
+        set_root_description "dns-secure" "Set DNS to Quad9"
+    fi
+}
+
+collect_guest_disable() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "guest-disable" "defaults write /Library/Preferences/com.apple.loginwindow GuestEnabled -bool false"
+        set_root_description "guest-disable" "Disable guest account"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "guest-disable" "usermod -L guest 2>/dev/null || true"
+        set_root_description "guest-disable" "Lock guest account"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PACKAGE INSTALL HELPERS
 # ═══════════════════════════════════════════════════════════════════
 pkg_install() {
