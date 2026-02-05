@@ -600,10 +600,19 @@ queue_root_command() {
 }
 
 # Optimistic sudo: try unprivileged first, queue to root batch on permission error
+# NOTE: Arguments are flattened via $* for compatibility with the root batch system
+# (execute_root_batch stores commands as strings in associative arrays and later runs
+# them via eval/sudo bash -c). Call sites must use only hardcoded or pre-validated args.
 try_or_queue_root() {
     local module="$1"
     shift
     local cmd="$*"
+
+    # Respect --no-sudo mode
+    if [[ "$NO_SUDO_MODE" == true ]]; then
+        log_entry "$module" "optimistic" "skip" "Skipped (--no-sudo mode)"
+        return 0
+    fi
 
     # Check against always-root patterns — skip unprivileged attempt
     for pattern in "${ALWAYS_ROOT_PATTERNS[@]}"; do
@@ -614,11 +623,11 @@ try_or_queue_root() {
         fi
     done
 
-    # Attempt unprivileged execution
+    # Attempt unprivileged execution (suppress stdout and capture stderr)
     local stderr_file
     stderr_file="$(mktemp)"
 
-    if eval "$cmd" 2>"$stderr_file"; then
+    if eval "$cmd" >/dev/null 2>"$stderr_file"; then
         rm -f "$stderr_file"
         log_entry "$module" "optimistic" "ok" "Success without sudo"
         return 0
@@ -4516,7 +4525,8 @@ mod_hostname_scrub() {
             return
         fi
         STATE_PREVIOUS[hostname-scrub]="$current"
-        try_or_queue_root "hostname-scrub" hostnamectl set-hostname "$generic"
+        try_or_queue_root "hostname-scrub" hostnamectl set-hostname "$generic" || \
+            try_or_queue_root "hostname-scrub" hostname "$generic"
         print_status "$CURRENT_MODULE" "$TOTAL_MODULES" "$desc ($generic)" "applied"
         log_entry "hostname-scrub" "apply" "ok" "Hostname set to $generic"
         MODULE_RESULT="applied"
@@ -5641,7 +5651,8 @@ revert_hostname_scrub() {
         log_entry "hostname-scrub" "revert" "ok" "Hostname restored to $prev"
         MODULE_RESULT="reverted"
     elif [[ "$OS" == "linux" ]]; then
-        try_or_queue_root "hostname-scrub" hostnamectl set-hostname "$prev"
+        try_or_queue_root "hostname-scrub" hostnamectl set-hostname "$prev" || \
+            try_or_queue_root "hostname-scrub" hostname "$prev"
         print_status "$CURRENT_MODULE" "$TOTAL_MODULES" "$desc ($prev)" "reverted"
         log_entry "hostname-scrub" "revert" "ok" "Hostname restored to $prev"
         MODULE_RESULT="reverted"
@@ -6605,10 +6616,15 @@ monitor_menu() {
         fi
     fi
 
-    # Also check via system service manager
+    # Also check via system service manager (fallback if PID file is stale)
     if [[ "$daemon_installed" == true && "$daemon_running" == false ]]; then
         case "$OS" in
-            macos) launchctl list com.barked.monitor &>/dev/null && daemon_running=true ;;
+            macos)
+                # launchctl list returns 0 even for registered-but-stopped; check PID field
+                local lctl_pid
+                lctl_pid=$(launchctl list com.barked.monitor 2>/dev/null | awk 'NR==2 {print $1}')
+                [[ -n "$lctl_pid" && "$lctl_pid" != "-" ]] && daemon_running=true
+                ;;
             linux) systemctl --user is-active barked-monitor &>/dev/null && daemon_running=true ;;
         esac
     fi
@@ -6668,7 +6684,7 @@ monitor_management_menu() {
                 s) monitor_cmd_status; monitor_management_menu "running"; return ;;
                 l) monitor_cmd_logs false; monitor_management_menu "running"; return ;;
                 a) monitor_cmd_alerts; monitor_management_menu "running"; return ;;
-                r) monitor_cmd_restart; monitor_management_menu "running"; return ;;
+                r) monitor_cmd_restart; monitor_menu; return ;;
                 d) monitor_cmd_disable; return ;;
                 u) monitor_cmd_uninstall; return ;;
                 b) return ;;
@@ -6693,7 +6709,7 @@ monitor_management_menu() {
             echo -ne "  ${BOLD}Choice:${NC} "
             read -r choice
             case "${choice,,}" in
-                e) monitor_cmd_enable; monitor_management_menu "running"; return ;;
+                e) monitor_cmd_enable; monitor_menu; return ;;
                 u) monitor_cmd_uninstall; return ;;
                 b) return ;;
                 *) echo -e "  ${RED}Invalid choice.${NC}" ;;
