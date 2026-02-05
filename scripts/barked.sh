@@ -6489,27 +6489,36 @@ monitor_write_default_config() {
     mkdir -p "$(dirname "$MONITOR_CONFIG_FILE")"
     cat > "$MONITOR_CONFIG_FILE" << 'EOFCONFIG'
 # Barked Monitor Configuration
-# Generated: $(date)
+
+# Daemon settings
+DAEMON_ENABLED=true
+DAEMON_START_MODE="always"        # "always" | "ac_power" | "manual"
+DAEMON_INSTALLED=false
 
 # Monitor settings
-MONITOR_INTERVAL=300          # seconds between checks (default: 5 min)
+MONITOR_INTERVAL=300              # seconds between checks (default: 5 min)
 MONITOR_CATEGORIES="supply-chain,cloud-sync,network,dev-env"
 
 # Alert channels (configure one or more)
-ALERT_WEBHOOK_URL=""          # Generic webhook endpoint
-ALERT_SLACK_URL=""            # Slack incoming webhook
-ALERT_DISCORD_URL=""          # Discord webhook
-ALERT_MACOS_NOTIFY=true       # macOS notification center
+ALERT_MACOS_NOTIFY=true           # macOS notification center
+ALERT_SLACK_URL=""                # Slack incoming webhook
+ALERT_DISCORD_URL=""              # Discord webhook
+ALERT_WEBHOOK_URL=""              # Generic webhook endpoint
 
 # Email via SMTP API (optional)
 ALERT_EMAIL_ENABLED=false
-ALERT_EMAIL_API_URL=""        # SendGrid/Mailgun API endpoint
-ALERT_EMAIL_API_KEY=""        # API key
-ALERT_EMAIL_TO=""             # Recipient address
+ALERT_EMAIL_API_URL=""            # SendGrid/Mailgun API endpoint
+ALERT_EMAIL_API_KEY=""            # API key
+ALERT_EMAIL_TO=""                 # Recipient address
 
 # Alert behavior
-ALERT_COOLDOWN=3600           # Re-alert after N seconds if issue persists
-ALERT_SEVERITY_MIN="warning"  # "warning" or "critical" only
+ALERT_COOLDOWN=3600               # Re-alert after N seconds if issue persists
+ALERT_SEVERITY_MIN="warning"      # "warning" or "critical" only
+
+# Notification detail
+NOTIFY_SHOW_IMPACT=true           # Include "why this matters"
+NOTIFY_SHOW_REMEDIATION=true      # Include "how to fix"
+NOTIFY_MACOS_CLICK_ACTION="log"   # "log" | "none"
 EOFCONFIG
     chmod 600 "$MONITOR_CONFIG_FILE"
     echo -e "  ${GREEN}✓${NC} Created default config: ${MONITOR_CONFIG_FILE}"
