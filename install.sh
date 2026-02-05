@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════
 # install.sh — Barked installer for macOS / Linux
-# Usage:
-#   bash install.sh              # Install to ~/.local/bin (recommended)
-#   sudo bash install.sh         # Install to /usr/local/bin (system-wide)
+# Usage:  bash install.sh       # Install to ~/.local/bin
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 GITHUB_REPO="sth8pwd5wx-max/barked"
 BINARY_NAME="barked"
 
-# Determine install location based on privileges
+# Refuse to run as root — barked is a user-space tool
 if [[ $EUID -eq 0 ]]; then
-    INSTALL_DIR="/usr/local/bin"
-    INSTALL_TYPE="system-wide"
-else
-    INSTALL_DIR="${HOME}/.local/bin"
-    INSTALL_TYPE="user"
+    echo "Error: Do not install barked as root. Run without sudo:" >&2
+    echo "  bash install.sh" >&2
+    exit 1
 fi
+
+INSTALL_DIR="${HOME}/.local/bin"
+INSTALL_TYPE="user"
 
 # ═══════════════════════════════════════════════════════════════════
 # COLORS

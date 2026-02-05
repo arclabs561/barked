@@ -10186,14 +10186,11 @@ run_update() {
         exit 0
     fi
 
-    # Check if we need root for the update
-    local need_root=false
+    # Refuse to update a root-owned install — barked is a user-space tool
     if [[ ! -w "$install_path" ]]; then
-        need_root=true
-        acquire_sudo || {
-            echo -e "${RED}Cannot update ${install_path} without admin privileges.${NC}"
-            exit 1
-        }
+        echo -e "${RED}Cannot update ${install_path} — it is not user-writable.${NC}"
+        echo -e "  Reinstall to ~/.local/bin:  ${BROWN}bash <(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/install.sh)${NC}"
+        exit 1
     fi
 
     local tmp_file
@@ -10242,26 +10239,15 @@ run_update() {
 
     chmod 755 "$tmp_file"
 
-    # Install using appropriate privileges
-    if [[ "$need_root" == true ]]; then
-        run_as_root mv "$tmp_file" "$install_path" 2>/dev/null || {
-            run_as_root cp "$tmp_file" "$install_path" 2>/dev/null || {
-                echo -e "${RED}Failed to replace ${install_path}.${NC}"
-                rm -f "$tmp_file"
-                exit 1
-            }
+    # Install (always user-writable at this point)
+    mv "$tmp_file" "$install_path" 2>/dev/null || {
+        cp "$tmp_file" "$install_path" 2>/dev/null || {
+            echo -e "${RED}Failed to replace ${install_path}.${NC}"
             rm -f "$tmp_file"
+            exit 1
         }
-    else
-        mv "$tmp_file" "$install_path" 2>/dev/null || {
-            cp "$tmp_file" "$install_path" 2>/dev/null || {
-                echo -e "${RED}Failed to replace ${install_path}.${NC}"
-                rm -f "$tmp_file"
-                exit 1
-            }
-            rm -f "$tmp_file"
-        }
-    fi
+        rm -f "$tmp_file"
+    }
 
     echo -e "${GREEN}Updated to v${latest}.${NC}"
     exit 0
@@ -10309,13 +10295,12 @@ run_uninstall_self() {
     }
 
     if [[ ! -w "$install_path" ]]; then
-        acquire_sudo || {
-            echo -e "${RED}Cannot remove ${install_path} without admin privileges.${NC}"
-            exit 1
-        }
+        echo -e "${RED}Cannot remove ${install_path} — it is not user-writable.${NC}"
+        echo -e "  Remove it manually:  ${BROWN}sudo rm ${install_path}${NC}"
+        exit 1
     fi
 
-    run_as_root rm -f "$install_path"
+    rm -f "$install_path"
     rm -f "${TMPDIR:-/tmp}/barked-update-check-$(id -u)"
     echo -e "${GREEN}barked has been removed from ${install_path}.${NC}"
     exit 0
