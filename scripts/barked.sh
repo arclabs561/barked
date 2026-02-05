@@ -6586,54 +6586,41 @@ EOFCONFIG
 }
 
 monitor_menu() {
-    print_section "Monitor Mode"
+    local daemon_installed=false
+    local daemon_running=false
 
-    echo -e "${BOLD}Continuous security monitoring for VPN, supply chain, and network changes.${NC}"
-    echo ""
-
-    # Check if already initialized
-    local init_status="not configured"
-    if [[ -f "$MONITOR_CONFIG_FILE" ]]; then
-        init_status="${GREEN}configured${NC}"
-    fi
-
-    # Check if baseline exists
-    local baseline_status="not created"
-    if [[ -d "$MONITOR_BASELINE_DIR" ]] && [[ -n "$(ls -A "$MONITOR_BASELINE_DIR" 2>/dev/null)" ]]; then
-        baseline_status="${GREEN}exists${NC}"
+    # Check if daemon is installed
+    if [[ "$OS" == "macos" ]]; then
+        [[ -f "$HOME/Library/LaunchAgents/com.barked.monitor.plist" ]] && daemon_installed=true
+    elif [[ "$OS" == "linux" ]]; then
+        [[ -f "$HOME/.config/systemd/user/barked-monitor.service" ]] && daemon_installed=true
     fi
 
     # Check if running
-    local running_status="not running"
     if [[ -f "$MONITOR_PID_FILE" ]]; then
         local pid
         pid="$(cat "$MONITOR_PID_FILE" 2>/dev/null)"
         if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            running_status="${GREEN}running (PID: $pid)${NC}"
+            daemon_running=true
         fi
     fi
 
-    echo -e "  Status: config=${init_status}, baseline=${baseline_status}, daemon=${running_status}"
-    echo ""
-    echo -e "  ${GREEN}[1]${NC} Setup     — Initialize monitor configuration"
-    echo -e "  ${GREEN}[2]${NC} Baseline  — Snapshot current system state"
-    echo -e "  ${GREEN}[3]${NC} Start     — Start monitoring daemon"
-    echo -e "  ${GREEN}[4]${NC} Test      — Send a test alert"
-    echo -e "  ${BROWN}[B]${NC} Back      — Return to main menu"
-    echo ""
-
-    while true; do
-        echo -ne "  ${BOLD}Choice:${NC} "
-        read -r choice
-        case "${choice,,}" in
-            1) monitor_init_interactive; monitor_menu; return ;;
-            2) monitor_take_baseline; monitor_menu; return ;;
-            3) run_monitor ;;
-            4) monitor_test_alert; monitor_menu; return ;;
-            b) return ;;
-            *) echo -e "  ${RED}Invalid choice.${NC}" ;;
+    # Also check via system service manager
+    if [[ "$daemon_installed" == true && "$daemon_running" == false ]]; then
+        case "$OS" in
+            macos) launchctl list com.barked.monitor &>/dev/null && daemon_running=true ;;
+            linux) systemctl --user is-active barked-monitor &>/dev/null && daemon_running=true ;;
         esac
-    done
+    fi
+
+    # Route based on state
+    if [[ "$daemon_installed" == false ]]; then
+        monitor_install_wizard
+    elif [[ "$daemon_running" == true ]]; then
+        monitor_management_menu "running"
+    else
+        monitor_management_menu "stopped"
+    fi
 }
 
 monitor_init_interactive() {
