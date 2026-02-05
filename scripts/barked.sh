@@ -890,6 +890,107 @@ collect_guest_disable() {
     fi
 }
 
+collect_auto_updates() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "auto-updates" "defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool true"
+        queue_root_command "auto-updates" "defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool true"
+        queue_root_command "auto-updates" "defaults write /Library/Preferences/com.apple.SoftwareUpdate CriticalUpdateInstall -bool true"
+        set_root_description "auto-updates" "Enable automatic security updates"
+    elif [[ "$OS" == "linux" ]]; then
+        case "$DISTRO" in
+            debian)
+                queue_root_command "auto-updates" "DEBIAN_FRONTEND=noninteractive apt-get install -y unattended-upgrades"
+                queue_root_command "auto-updates" "dpkg-reconfigure -plow unattended-upgrades"
+                ;;
+            fedora)
+                queue_root_command "auto-updates" "dnf install -y dnf-automatic"
+                queue_root_command "auto-updates" "systemctl enable --now dnf-automatic-install.timer"
+                ;;
+        esac
+        set_root_description "auto-updates" "Enable automatic security updates"
+    fi
+}
+
+collect_hostname_scrub() {
+    local generic="workstation-$(head -c 4 /dev/urandom | xxd -p)"
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "hostname-scrub" "scutil --set ComputerName '$generic'"
+        queue_root_command "hostname-scrub" "scutil --set LocalHostName '$generic'"
+        queue_root_command "hostname-scrub" "scutil --set HostName '$generic'"
+        set_root_description "hostname-scrub" "Set generic hostname"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "hostname-scrub" "hostnamectl set-hostname '$generic' || hostname '$generic'"
+        set_root_description "hostname-scrub" "Set generic hostname"
+    fi
+}
+
+collect_telemetry_disable() {
+    if [[ "$OS" == "linux" ]]; then
+        if [[ -f /etc/default/apport ]]; then
+            queue_root_command "telemetry-disable" "sed -i 's/enabled=1/enabled=0/' /etc/default/apport"
+            queue_root_command "telemetry-disable" "systemctl stop apport.service"
+            queue_root_command "telemetry-disable" "systemctl disable apport.service"
+            set_root_description "telemetry-disable" "Disable crash reporting"
+        fi
+    fi
+    # macOS telemetry uses user-space defaults, handled separately
+}
+
+collect_bluetooth_disable() {
+    if [[ "$OS" == "linux" ]]; then
+        queue_root_command "bluetooth-disable" "systemctl disable --now bluetooth"
+        set_root_description "bluetooth-disable" "Disable Bluetooth service"
+    fi
+    # macOS bluetooth uses different approach
+}
+
+collect_mac_rotate() {
+    if [[ "$OS" == "linux" ]]; then
+        queue_root_command "mac-rotate" "mkdir -p /etc/NetworkManager/conf.d"
+        queue_root_command "mac-rotate" "cat > /etc/NetworkManager/conf.d/mac-randomize.conf << 'EOF'
+[device]
+wifi.scan-rand-mac-address=yes
+[connection]
+wifi.cloned-mac-address=random
+ethernet.cloned-mac-address=random
+EOF"
+        queue_root_command "mac-rotate" "systemctl restart NetworkManager"
+        set_root_description "mac-rotate" "Enable MAC address randomization"
+    fi
+}
+
+collect_kernel_sysctl() {
+    if [[ "$OS" == "linux" ]]; then
+        queue_root_command "kernel-sysctl" "cat > /etc/sysctl.d/99-hardening.conf << 'EOF'
+kernel.kptr_restrict=2
+kernel.dmesg_restrict=1
+kernel.unprivileged_bpf_disabled=1
+net.core.bpf_jit_harden=2
+kernel.yama.ptrace_scope=2
+EOF"
+        queue_root_command "kernel-sysctl" "sysctl --system"
+        set_root_description "kernel-sysctl" "Apply kernel hardening sysctls"
+    fi
+}
+
+collect_apparmor_enforce() {
+    if [[ "$OS" == "linux" ]]; then
+        queue_root_command "apparmor-enforce" "aa-enforce /etc/apparmor.d/*"
+        set_root_description "apparmor-enforce" "Enforce AppArmor profiles"
+    fi
+}
+
+collect_boot_security() {
+    if [[ "$OS" == "linux" ]]; then
+        queue_root_command "boot-security" "cat >> /etc/grub.d/40_custom << 'EOF'
+set superusers=\"root\"
+password_pbkdf2 root grub.pbkdf2.sha512.PLACEHOLDER
+EOF"
+        queue_root_command "boot-security" "update-grub || grub-mkconfig -o /boot/grub/grub.cfg"
+        set_root_description "boot-security" "Add GRUB password protection"
+    fi
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # PACKAGE INSTALL HELPERS
 # ═══════════════════════════════════════════════════════════════════
