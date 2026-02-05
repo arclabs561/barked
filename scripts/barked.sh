@@ -6463,6 +6463,109 @@ monitor_check_ide_extensions() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MONITOR MODE — BASELINE SNAPSHOT
+# ═══════════════════════════════════════════════════════════════════
+monitor_take_baseline() {
+    print_section "Creating Security Baseline"
+
+    mkdir -p "$MONITOR_BASELINE_DIR"
+
+    echo -e "  Capturing current state as known-good baseline..."
+    echo ""
+
+    # Network baselines
+    echo -ne "  ${BROWN}⟳${NC} DNS servers..."
+    if [[ "$OS" == "macos" ]]; then
+        local dns
+        dns="$(networksetup -getdnsservers Wi-Fi 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+        monitor_baseline_write "dns-servers" "$dns"
+    else
+        local dns
+        dns="$(grep "^nameserver" /etc/resolv.conf 2>/dev/null | awk '{print $2}' | tr '\n' ',' | sed 's/,$//')"
+        monitor_baseline_write "dns-servers" "$dns"
+    fi
+    echo -e "\r  ${GREEN}✓${NC} DNS servers"
+
+    echo -ne "  ${BROWN}⟳${NC} Network listeners..."
+    local listeners
+    listeners="$(lsof -i -P -n 2>/dev/null | grep LISTEN | awk '{print $1 ":" $9}' | sort -u | tr '\n' '|' | sed 's/|$//')"
+    monitor_baseline_write "listeners" "$listeners"
+    echo -e "\r  ${GREEN}✓${NC} Network listeners"
+
+    # Homebrew baselines
+    if command -v brew &>/dev/null; then
+        echo -ne "  ${BROWN}⟳${NC} Homebrew packages..."
+        local formulae
+        formulae="$(brew list --formula 2>/dev/null | sort | tr '\n' '|' | sed 's/|$//')"
+        monitor_baseline_write "brew-formulae" "$formulae"
+        local casks
+        casks="$(brew list --cask 2>/dev/null | sort | tr '\n' '|' | sed 's/|$//')"
+        monitor_baseline_write "brew-casks" "$casks"
+        echo -e "\r  ${GREEN}✓${NC} Homebrew packages"
+    fi
+
+    # App signatures baseline (macOS)
+    if [[ "$OS" == "macos" ]]; then
+        echo -ne "  ${BROWN}⟳${NC} Application signatures..."
+        local app_sigs=""
+        for app in /Applications/*.app; do
+            [[ ! -d "$app" ]] && continue
+            local app_name
+            app_name="$(basename "$app")"
+            local sig_info
+            sig_info="$(codesign -dv "$app" 2>&1 || echo "UNSIGNED")"
+            local sig_status="signed"
+            if echo "$sig_info" | grep -q "not signed\|UNSIGNED"; then
+                sig_status="unsigned"
+            elif echo "$sig_info" | grep -q "adhoc"; then
+                sig_status="adhoc"
+            fi
+            app_sigs+="${app_name}=${sig_status}\n"
+        done
+        echo -e "$app_sigs" > "${MONITOR_BASELINE_DIR}/app-signatures.txt"
+        echo -e "\r  ${GREEN}✓${NC} Application signatures"
+    fi
+
+    # npm globals
+    if command -v npm &>/dev/null; then
+        echo -ne "  ${BROWN}⟳${NC} npm global packages..."
+        local npm_globals
+        npm_globals="$(npm list -g --depth=0 2>/dev/null | tail -n +2 | awk '{print $2}' | cut -d'@' -f1 | sort | tr '\n' '|' | sed 's/|$//')"
+        monitor_baseline_write "npm-globals" "$npm_globals"
+        echo -e "\r  ${GREEN}✓${NC} npm global packages"
+    fi
+
+    # pip globals
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+        echo -ne "  ${BROWN}⟳${NC} pip global packages..."
+        local pip_cmd="pip3"
+        command -v pip3 &>/dev/null || pip_cmd="pip"
+        local pip_globals
+        pip_globals="$($pip_cmd list --user 2>/dev/null | tail -n +3 | awk '{print $1}' | sort | tr '\n' '|' | sed 's/|$//')"
+        monitor_baseline_write "pip-globals" "$pip_globals"
+        echo -e "\r  ${GREEN}✓${NC} pip global packages"
+    fi
+
+    # IDE extensions
+    for ext_dir in "$HOME/.vscode/extensions" "$HOME/.cursor/extensions"; do
+        if [[ -d "$ext_dir" ]]; then
+            local ide_name="vscode"
+            [[ "$ext_dir" == *cursor* ]] && ide_name="cursor"
+            echo -ne "  ${BROWN}⟳${NC} ${ide_name} extensions..."
+            local exts
+            exts="$(ls -1 "$ext_dir" 2>/dev/null | sort | tr '\n' '|' | sed 's/|$//')"
+            monitor_baseline_write "${ide_name}-extensions" "$exts"
+            echo -e "\r  ${GREEN}✓${NC} ${ide_name} extensions"
+        fi
+    done
+
+    echo ""
+    echo -e "  ${GREEN}Baseline captured.${NC} Saved to: ${MONITOR_BASELINE_DIR}"
+    echo ""
+    echo -e "  Next: ${CYAN}barked --monitor${NC} to start monitoring"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # ARGUMENT PARSING
 # ═══════════════════════════════════════════════════════════════════
 parse_args() {
