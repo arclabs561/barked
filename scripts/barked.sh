@@ -7457,9 +7457,8 @@ monitor_send_alert() {
 
     # Send to configured channels
     [[ -n "$ALERT_WEBHOOK_URL" ]] && monitor_send_webhook "" "$severity" "$category"
-    [[ -n "$ALERT_SLACK_URL" ]] && monitor_send_slack "$severity" "$BUILT_TITLE" "$details"
-    [[ -n "$ALERT_DISCORD_URL" ]] && monitor_send_discord "$severity" "$BUILT_TITLE" "$details"
     [[ "$ALERT_MACOS_NOTIFY" == "true" && "$OS" == "macos" ]] && monitor_send_macos "$severity" "$BUILT_TITLE" "$details"
+    [[ "$ALERT_LINUX_NOTIFY" == "true" && "$OS" == "linux" ]] && monitor_send_linux "$severity" "$BUILT_TITLE" "$details"
     [[ "$ALERT_EMAIL_ENABLED" == "true" ]] && monitor_send_email "$severity" "$BUILT_TITLE" "$details"
 }
 
