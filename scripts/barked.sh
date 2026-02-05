@@ -6915,6 +6915,111 @@ monitor_take_baseline_quiet() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MONITOR MODE — DAEMON INSTALLERS
+# ═══════════════════════════════════════════════════════════════════
+
+install_monitor_daemon_macos() {
+    local start_mode="$1"
+
+    local plist_path="${HOME}/Library/LaunchAgents/com.barked.monitor.plist"
+    mkdir -p "$(dirname "$plist_path")"
+
+    # Get barked path
+    local barked_path
+    barked_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+    # Get bash path (need bash 4+)
+    local bash_path="/opt/homebrew/bin/bash"
+    [[ ! -x "$bash_path" ]] && bash_path="/usr/local/bin/bash"
+    [[ ! -x "$bash_path" ]] && bash_path="/bin/bash"
+
+    # Build plist
+    local run_at_load="true"
+    local ac_power_key=""
+
+    [[ "$start_mode" == "manual" ]] && run_at_load="false"
+    [[ "$start_mode" == "ac_power" ]] && ac_power_key="<key>StartOnACPower</key><true/>"
+
+    cat > "$plist_path" << EOFPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.barked.monitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${bash_path}</string>
+    <string>${barked_path}</string>
+    <string>--monitor</string>
+    <string>--daemon</string>
+  </array>
+  <key>RunAtLoad</key>
+  <${run_at_load}/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>${HOME}/.config/barked/monitor-stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>${HOME}/.config/barked/monitor-stderr.log</string>
+  ${ac_power_key}
+</dict>
+</plist>
+EOFPLIST
+
+    # Load the job
+    launchctl unload "$plist_path" 2>/dev/null || true
+    if launchctl load "$plist_path" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} LaunchAgent installed: ${plist_path}"
+    else
+        echo -e "  ${RED}✗${NC} Failed to load LaunchAgent"
+        return 1
+    fi
+}
+
+uninstall_monitor_daemon_macos() {
+    local plist_path="${HOME}/Library/LaunchAgents/com.barked.monitor.plist"
+
+    if [[ -f "$plist_path" ]]; then
+        launchctl unload "$plist_path" 2>/dev/null || true
+        rm -f "$plist_path"
+        echo -e "  ${GREEN}✓${NC} LaunchAgent removed"
+    else
+        echo -e "  ${BROWN}No LaunchAgent found${NC}"
+    fi
+
+    # Update config
+    if [[ -f "$MONITOR_CONFIG_FILE" ]]; then
+        sed -i '' 's/DAEMON_INSTALLED=true/DAEMON_INSTALLED=false/' "$MONITOR_CONFIG_FILE" 2>/dev/null || true
+    fi
+}
+
+monitor_daemon_start() {
+    case "$OS" in
+        macos)
+            launchctl kickstart "gui/$(id -u)/com.barked.monitor" 2>/dev/null || \
+            launchctl start "com.barked.monitor" 2>/dev/null || true
+            ;;
+        linux)
+            systemctl --user start barked-monitor 2>/dev/null || true
+            ;;
+    esac
+}
+
+monitor_daemon_stop() {
+    case "$OS" in
+        macos)
+            launchctl kill SIGTERM "gui/$(id -u)/com.barked.monitor" 2>/dev/null || true
+            ;;
+        linux)
+            systemctl --user stop barked-monitor 2>/dev/null || true
+            ;;
+    esac
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # MONITOR MODE — ALERT SYSTEM
 # ═══════════════════════════════════════════════════════════════════
 
