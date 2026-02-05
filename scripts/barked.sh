@@ -992,6 +992,59 @@ EOF"
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# TWO-PHASE EXECUTION: REVERT COMMAND COLLECTORS
+# ═══════════════════════════════════════════════════════════════════
+collect_revert_firewall_inbound() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setblockall off"
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setallowsigned on"
+        queue_root_command "firewall-inbound" "/usr/libexec/ApplicationFirewall/socketfilterfw --setallowsignedapp on"
+        set_root_description "firewall-inbound" "Disable firewall restrictions"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "firewall-inbound" "ufw --force disable"
+        set_root_description "firewall-inbound" "Disable ufw"
+    fi
+}
+
+collect_revert_firewall_stealth() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "firewall-stealth" "/usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode off"
+        set_root_description "firewall-stealth" "Disable stealth mode"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "firewall-stealth" "iptables -D INPUT -p icmp --icmp-type echo-request -j DROP 2>/dev/null || true"
+        set_root_description "firewall-stealth" "Allow ICMP echo requests"
+    fi
+}
+
+collect_revert_dns_secure() {
+    local prev="${STATE_PREVIOUS[dns-secure]:-}"
+    if [[ "$OS" == "macos" ]]; then
+        if [[ -n "$prev" ]]; then
+            queue_root_command "dns-secure" "networksetup -setdnsservers Wi-Fi $prev"
+        else
+            queue_root_command "dns-secure" "networksetup -setdnsservers Wi-Fi Empty"
+        fi
+        set_root_description "dns-secure" "Restore previous DNS"
+    elif [[ "$OS" == "linux" ]]; then
+        if [[ -f /etc/resolv.conf.bak ]]; then
+            queue_root_command "dns-secure" "cp /etc/resolv.conf.bak /etc/resolv.conf"
+        fi
+        set_root_description "dns-secure" "Restore previous DNS"
+    fi
+}
+
+collect_revert_guest_disable() {
+    if [[ "$OS" == "macos" ]]; then
+        queue_root_command "guest-disable" "defaults write /Library/Preferences/com.apple.loginwindow GuestEnabled -bool true"
+        set_root_description "guest-disable" "Re-enable guest account"
+    elif [[ "$OS" == "linux" ]]; then
+        queue_root_command "guest-disable" "usermod -U guest 2>/dev/null || true"
+        set_root_description "guest-disable" "Unlock guest account"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # TWO-PHASE EXECUTION: MAIN ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════════
 run_all_modules_twophase() {
