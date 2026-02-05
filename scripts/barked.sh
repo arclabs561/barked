@@ -6566,6 +6566,60 @@ monitor_take_baseline() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MONITOR MODE — MAIN LOOP
+# ═══════════════════════════════════════════════════════════════════
+monitor_run_checks() {
+    local categories
+    IFS=',' read -ra categories <<< "$MONITOR_CATEGORIES"
+
+    for category in "${categories[@]}"; do
+        case "$category" in
+            network)       monitor_check_network ;;
+            supply-chain)  monitor_check_supply_chain ;;
+            cloud-sync)    monitor_check_cloud_sync ;;
+            dev-env)       monitor_check_dev_env ;;
+        esac
+    done
+}
+
+run_monitor() {
+    # Check for existing instance
+    if ! monitor_check_pid; then
+        exit 1
+    fi
+
+    # Load config
+    monitor_load_config
+
+    # Setup signal handlers
+    trap monitor_cleanup EXIT INT TERM
+
+    # Write PID file
+    monitor_write_pid
+
+    print_section "Security Monitor"
+    echo -e "  Monitoring every ${MONITOR_INTERVAL} seconds"
+    echo -e "  Categories: ${MONITOR_CATEGORIES}"
+    echo -e "  Press Ctrl+C to stop"
+    echo ""
+
+    monitor_log "INFO" "Monitor started (interval: ${MONITOR_INTERVAL}s, categories: ${MONITOR_CATEGORIES})"
+
+    # Initial check
+    echo -e "  ${BROWN}Running initial security check...${NC}"
+    monitor_run_checks
+    echo -e "  ${GREEN}✓${NC} Initial check complete"
+    echo ""
+
+    # Main loop
+    while true; do
+        sleep "$MONITOR_INTERVAL"
+        monitor_log "INFO" "Running scheduled check"
+        monitor_run_checks
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # ARGUMENT PARSING
 # ═══════════════════════════════════════════════════════════════════
 parse_args() {
@@ -8277,6 +8331,34 @@ main() {
         local rc=$?
         write_clean_log
         exit $rc
+    fi
+
+    # ── Monitor mode subcommands ──
+    if [[ "$MONITOR_INIT" == true ]]; then
+        detect_os
+        monitor_init_interactive
+        exit 0
+    fi
+
+    if [[ "$MONITOR_BASELINE" == true ]]; then
+        detect_os
+        print_header
+        monitor_take_baseline
+        exit 0
+    fi
+
+    if [[ "$MONITOR_TEST_ALERT" == true ]]; then
+        detect_os
+        print_header
+        monitor_test_alert
+        exit 0
+    fi
+
+    if [[ "$MONITOR_MODE" == true ]]; then
+        detect_os
+        print_header
+        run_monitor
+        exit 0
     fi
 
     print_header
