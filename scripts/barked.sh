@@ -674,6 +674,111 @@ prompt_root_preview() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# TWO-PHASE EXECUTION: BATCHED ROOT EXECUTION
+# ═══════════════════════════════════════════════════════════════════
+execute_root_batch() {
+    local total_cmds
+    total_cmds=$(count_root_commands)
+
+    if [[ $total_cmds -eq 0 ]]; then
+        return 0
+    fi
+
+    echo ""
+    echo -e "══════════════════════════════════════════════════════════"
+    echo -e "  ${BOLD}Executing root commands...${NC}"
+    echo -e "══════════════════════════════════════════════════════════"
+    echo ""
+
+    # Log section header
+    log_entry "ROOT-BATCH" "start" "info" "Beginning root command batch ($total_cmds commands)"
+
+    local cmd_num=0
+    for mod in "${ROOT_MODULES_LIST[@]}"; do
+        if [[ -z "${ROOT_COMMANDS[$mod]:-}" ]]; then
+            continue
+        fi
+
+        local mod_cmd_count
+        mod_cmd_count=$(echo "${ROOT_COMMANDS[$mod]}" | grep -c .)
+        local mod_cmd_num=0
+
+        while IFS= read -r cmd; do
+            ((cmd_num++))
+            ((mod_cmd_num++))
+
+            # Log the command before execution
+            log_entry "$mod" "root-cmd" "exec" "$cmd"
+
+            # Execute
+            local exit_code=0
+            if [[ $EUID -eq 0 ]]; then
+                eval "$cmd" &>/dev/null || exit_code=$?
+            else
+                sudo bash -c "$cmd" &>/dev/null || exit_code=$?
+            fi
+
+            # Log result
+            log_entry "$mod" "root-cmd" "exit" "Exit code: $exit_code"
+
+            if [[ $exit_code -eq 0 ]]; then
+                echo -e "  ${GREEN}[✓]${NC} ${mod} (${mod_cmd_num}/${mod_cmd_count})"
+            else
+                echo -e "  ${RED}[✗]${NC} ${mod} (${mod_cmd_num}/${mod_cmd_count})"
+                echo ""
+                echo -e "══════════════════════════════════════════════════════════"
+                echo -e "  ${RED}${BOLD}ROOT BATCH ABORTED${NC}"
+                echo -e "══════════════════════════════════════════════════════════"
+                echo ""
+                echo -e "  ${BOLD}Failed command:${NC}"
+                echo -e "    ${cmd}"
+                echo ""
+                echo -e "  ${BOLD}Exit code:${NC} ${exit_code}"
+                echo ""
+
+                # Count skipped
+                local skipped=0
+                local remaining_in_mod=$((mod_cmd_count - mod_cmd_num))
+                skipped=$((skipped + remaining_in_mod))
+
+                local found_current=false
+                for skip_mod in "${ROOT_MODULES_LIST[@]}"; do
+                    if [[ "$skip_mod" == "$mod" ]]; then
+                        found_current=true
+                        continue
+                    fi
+                    if [[ "$found_current" == true && -n "${ROOT_COMMANDS[$skip_mod]:-}" ]]; then
+                        local skip_count
+                        skip_count=$(echo "${ROOT_COMMANDS[$skip_mod]}" | grep -c .)
+                        skipped=$((skipped + skip_count))
+                    fi
+                done
+
+                if [[ $skipped -gt 0 ]]; then
+                    echo -e "  ${BOLD}Skipped (not executed):${NC} ${skipped} commands"
+                fi
+                echo ""
+                echo -e "  ${BROWN}Recommendation: Investigate the failure, then re-run barked.${NC}"
+                echo ""
+
+                ROOT_BATCH_ABORTED=true
+                ROOT_BATCH_FAIL_CMD="$cmd"
+                ROOT_BATCH_FAIL_EXIT=$exit_code
+                ROOT_BATCH_FAIL_MODULE="$mod"
+
+                log_entry "ROOT-BATCH" "abort" "fail" "Aborted after $cmd_num commands, $skipped skipped"
+                return 1
+            fi
+        done <<< "${ROOT_COMMANDS[$mod]}"
+    done
+
+    echo ""
+    echo -e "  ${GREEN}All ${total_cmds} root commands completed successfully.${NC}"
+    log_entry "ROOT-BATCH" "complete" "ok" "All $total_cmds commands executed"
+    return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PACKAGE INSTALL HELPERS
 # ═══════════════════════════════════════════════════════════════════
 pkg_install() {
