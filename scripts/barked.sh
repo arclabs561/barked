@@ -1069,9 +1069,9 @@ $interval_xml
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>/tmp/barked-clean.log</string>
+  <string>\$HOME/Library/Logs/barked-clean.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/barked-clean-error.log</string>
+  <string>\$HOME/Library/Logs/barked-clean-error.log</string>
 </dict>
 </plist>
 EOF
@@ -1113,7 +1113,8 @@ install_scheduler_linux() {
     esac
 
     # Build cron line
-    local cron_line="$cron_schedule $barked_path --clean-scheduled"
+    local cron_line
+    printf -v cron_line '%s %s --clean-scheduled' "$cron_schedule" "$barked_path"
 
     # Check if cron job already exists
     if crontab -l 2>/dev/null | grep -F "$barked_path --clean-scheduled" >/dev/null; then
@@ -1189,7 +1190,7 @@ PYEOF
 # run_scheduled_clean: Execute automatic cleaning (invoked by scheduler)
 # ───────────────────────────────────────────────────────────────────
 run_scheduled_clean() {
-    local lock_file="/tmp/barked-clean.lock"
+    local lock_file="${HOME}/.config/barked/clean.lock"
     local lock_timeout=7200  # 2 hours in seconds
     local min_disk_gb=5
     local min_battery_pct=20
