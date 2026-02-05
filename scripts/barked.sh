@@ -6795,17 +6795,42 @@ EOFJSON
 
 monitor_send_discord() {
     local severity="$1" title="$2" details="$3"
-    local color="16711680"  # red
-    [[ "$severity" == "warning" ]] && color="16776960"  # yellow
+    local color="16776960"  # yellow
+    [[ "$severity" == "critical" ]] && color="16711680"  # red
+
+    local hostname
+    hostname="$(scutil --get ComputerName 2>/dev/null || hostname)"
+    local timestamp
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+    # Build description with impact
+    local description="$details"
+    if [[ -n "$BUILT_IMPACT" && "$severity" == "critical" ]]; then
+        description="${BUILT_IMPACT}\n\n**Details:** ${details}"
+    fi
+
+    # Build fields array
+    local fields="["
+    fields+="{\"name\":\"Host\",\"value\":\"${hostname}\",\"inline\":true},"
+    fields+="{\"name\":\"Severity\",\"value\":\"${severity}\",\"inline\":true}"
+    fields+="]"
+
+    # Build footer with remediation
+    local footer_text="barked monitor"
+    if [[ -n "$BUILT_REMEDIATION" ]]; then
+        footer_text="Fix: ${BUILT_REMEDIATION}"
+    fi
 
     local discord_payload
     discord_payload=$(cat << EOFJSON
 {
   "embeds": [{
     "color": ${color},
-    "title": "Barked Security Alert: ${title}",
-    "description": "${details}",
-    "footer": {"text": "barked monitor"}
+    "title": "${BUILT_TITLE}",
+    "description": "${description}",
+    "fields": ${fields},
+    "footer": {"text": "${footer_text}"},
+    "timestamp": "${timestamp}"
   }]
 }
 EOFJSON
