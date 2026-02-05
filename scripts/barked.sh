@@ -6297,6 +6297,172 @@ monitor_check_token_exposure() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MONITOR MODE — DEV ENVIRONMENT CHECKS
+# ═══════════════════════════════════════════════════════════════════
+monitor_check_dev_env() {
+    monitor_check_git_credentials
+    monitor_check_ssh_keys
+    monitor_check_docker
+    monitor_check_ide_extensions
+}
+
+monitor_check_git_credentials() {
+    # Check for .git-credentials file
+    if [[ -f "$HOME/.git-credentials" ]]; then
+        local prev_warned
+        prev_warned="$(monitor_state_get "dev-env" "git_credentials_file")"
+        if [[ -z "$prev_warned" ]]; then
+            monitor_state_set "dev-env" "git_credentials_file" "1"
+            monitor_send_alert "critical" "dev-env" "Git Credentials File" \
+                "~/.git-credentials exists with plaintext credentials. Use credential.helper=osxkeychain instead."
+        fi
+    fi
+
+    # Check gitconfig for embedded tokens
+    if [[ -f "$HOME/.gitconfig" ]]; then
+        if grep -qE "(token|password)\s*=" "$HOME/.gitconfig" 2>/dev/null; then
+            local prev_warned
+            prev_warned="$(monitor_state_get "dev-env" "gitconfig_token")"
+            if [[ -z "$prev_warned" ]]; then
+                monitor_state_set "dev-env" "gitconfig_token" "1"
+                monitor_send_alert "critical" "dev-env" "Token in Git Config" \
+                    "Potential credential found in ~/.gitconfig"
+            fi
+        fi
+    fi
+}
+
+monitor_check_ssh_keys() {
+    local ssh_dir="$HOME/.ssh"
+    [[ ! -d "$ssh_dir" ]] && return 0
+
+    for key_file in "$ssh_dir"/id_*; do
+        [[ ! -f "$key_file" ]] && continue
+        [[ "$key_file" == *.pub ]] && continue
+
+        local key_name
+        key_name="$(basename "$key_file")"
+
+        # Check permissions
+        local perms
+        perms="$(stat -f "%OLp" "$key_file" 2>/dev/null || stat -c "%a" "$key_file" 2>/dev/null)"
+        if [[ "$perms" != "600" ]]; then
+            local prev_warned
+            prev_warned="$(monitor_state_get "dev-env" "ssh_perms_${key_name}")"
+            if [[ -z "$prev_warned" ]]; then
+                monitor_state_set "dev-env" "ssh_perms_${key_name}" "1"
+                monitor_send_alert "warning" "dev-env" "SSH Key Permissions" \
+                    "${key_name} has permissions ${perms} (should be 600)"
+            fi
+        fi
+
+        # Check for passphrase (attempt to load with empty passphrase)
+        if ssh-keygen -y -P "" -f "$key_file" &>/dev/null; then
+            local prev_warned
+            prev_warned="$(monitor_state_get "dev-env" "ssh_nopass_${key_name}")"
+            if [[ -z "$prev_warned" ]]; then
+                monitor_state_set "dev-env" "ssh_nopass_${key_name}" "1"
+                monitor_send_alert "warning" "dev-env" "SSH Key No Passphrase" \
+                    "${key_name} has no passphrase protection"
+            fi
+        fi
+
+        # Check key type
+        local key_type
+        key_type="$(ssh-keygen -l -f "$key_file" 2>/dev/null | awk '{print $NF}' | tr -d '()')"
+        if [[ "$key_type" == "DSA" ]]; then
+            monitor_send_alert "warning" "dev-env" "Weak SSH Key" \
+                "${key_name} uses deprecated DSA algorithm"
+        elif [[ "$key_type" == "RSA" ]]; then
+            local key_bits
+            key_bits="$(ssh-keygen -l -f "$key_file" 2>/dev/null | awk '{print $1}')"
+            if [[ "$key_bits" -lt 4096 ]]; then
+                local prev_warned
+                prev_warned="$(monitor_state_get "dev-env" "ssh_weak_${key_name}")"
+                if [[ -z "$prev_warned" ]]; then
+                    monitor_state_set "dev-env" "ssh_weak_${key_name}" "1"
+                    monitor_send_alert "warning" "dev-env" "Weak SSH Key" \
+                        "${key_name} is RSA with only ${key_bits} bits (recommend 4096+)"
+                fi
+            fi
+        fi
+    done
+}
+
+monitor_check_docker() {
+    if ! command -v docker &>/dev/null; then
+        return 0
+    fi
+
+    # Check for privileged containers
+    local privileged
+    privileged="$(docker ps --format '{{.Names}}' --filter "status=running" 2>/dev/null | while read -r name; do
+        docker inspect "$name" 2>/dev/null | grep -q '"Privileged": true' && echo "$name"
+    done)"
+
+    if [[ -n "$privileged" ]]; then
+        for container in $privileged; do
+            local prev_warned
+            prev_warned="$(monitor_state_get "dev-env" "docker_priv_${container}")"
+            if [[ -z "$prev_warned" ]]; then
+                monitor_state_set "dev-env" "docker_priv_${container}" "1"
+                monitor_send_alert "critical" "dev-env" "Privileged Container" \
+                    "Container '${container}' running with --privileged flag"
+            fi
+        done
+    fi
+
+    # Check for host network mode
+    local host_net
+    host_net="$(docker ps --format '{{.Names}}' --filter "status=running" 2>/dev/null | while read -r name; do
+        docker inspect "$name" 2>/dev/null | grep -q '"NetworkMode": "host"' && echo "$name"
+    done)"
+
+    if [[ -n "$host_net" ]]; then
+        for container in $host_net; do
+            local prev_warned
+            prev_warned="$(monitor_state_get "dev-env" "docker_hostnet_${container}")"
+            if [[ -z "$prev_warned" ]]; then
+                monitor_state_set "dev-env" "docker_hostnet_${container}" "1"
+                monitor_send_alert "warning" "dev-env" "Container Host Network" \
+                    "Container '${container}' using host network mode"
+            fi
+        done
+    fi
+}
+
+monitor_check_ide_extensions() {
+    if [[ "$OS" != "macos" ]]; then
+        return 0
+    fi
+
+    # VS Code / Cursor extensions
+    local -a ext_dirs=("$HOME/.vscode/extensions" "$HOME/.cursor/extensions")
+
+    for ext_dir in "${ext_dirs[@]}"; do
+        [[ ! -d "$ext_dir" ]] && continue
+
+        local ide_name="vscode"
+        [[ "$ext_dir" == *cursor* ]] && ide_name="cursor"
+
+        local current_exts
+        current_exts="$(ls -1 "$ext_dir" 2>/dev/null | sort | tr '\n' '|' | sed 's/|$//')"
+        local baseline_exts
+        baseline_exts="$(monitor_baseline_read "${ide_name}-extensions")"
+
+        if [[ -n "$baseline_exts" ]]; then
+            local new_exts
+            new_exts="$(comm -23 <(echo "$current_exts" | tr '|' '\n' | sort) <(echo "$baseline_exts" | tr '|' '\n' | sort))"
+            for ext in $new_exts; do
+                [[ -z "$ext" ]] && continue
+                monitor_send_alert "warning" "dev-env" "New IDE Extension" \
+                    "New ${ide_name} extension: ${ext}"
+            done
+        fi
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # ARGUMENT PARSING
 # ═══════════════════════════════════════════════════════════════════
 parse_args() {
