@@ -7901,10 +7901,10 @@ monitor_check_firewall() {
     fi
 
     local fw_state
-    fw_state="$(sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -o "enabled\|disabled" || echo "unknown")"
+    fw_state="$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -o "enabled\|disabled" || echo "unknown")"
 
     local stealth_state
-    stealth_state="$(sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode 2>/dev/null | grep -o "enabled\|disabled" || echo "unknown")"
+    stealth_state="$(/usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode 2>/dev/null | grep -o "enabled\|disabled" || echo "unknown")"
 
     local prev_fw
     prev_fw="$(monitor_state_get "network" "firewall_state")"
