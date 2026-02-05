@@ -6623,6 +6623,85 @@ monitor_menu() {
     fi
 }
 
+monitor_management_menu() {
+    local state="$1"  # "running" or "stopped"
+
+    if [[ "$state" == "running" ]]; then
+        echo ""
+        echo -e "══════════════════════════════════════════════════════════"
+        echo -e "  ${BOLD}Security Monitor -- ${GREEN}Active${NC}"
+        echo -e "══════════════════════════════════════════════════════════"
+        echo ""
+
+        # Gather status info
+        local pid_display="unknown"
+        if [[ -f "$MONITOR_PID_FILE" ]]; then
+            pid_display="$(cat "$MONITOR_PID_FILE" 2>/dev/null)"
+        fi
+        echo -e "  Status:     ${GREEN}Running${NC} (PID $pid_display)"
+
+        # Last check time
+        if [[ -f "$MONITOR_LOG_FILE" ]]; then
+            local last_check
+            last_check=$(grep "Running scheduled check" "$MONITOR_LOG_FILE" 2>/dev/null | tail -1 | cut -d']' -f1 | tr -d '[')
+            [[ -n "$last_check" ]] && echo -e "  Last check: $last_check"
+        fi
+
+        # Alert count (last 24h)
+        local alert_count=0
+        if [[ -f "$MONITOR_LOG_FILE" ]]; then
+            local today
+            today=$(date '+%Y-%m-%d')
+            alert_count=$(grep -c "ALERT.*$today" "$MONITOR_LOG_FILE" 2>/dev/null || echo 0)
+        fi
+        echo -e "  Alerts:     ${alert_count} today"
+        echo ""
+        echo -e "  ${GREEN}[S]${NC} Full status    ${GREEN}[L]${NC} View logs    ${GREEN}[A]${NC} Recent alerts"
+        echo -e "  ${CYAN}[R]${NC} Restart        ${RED}[D]${NC} Disable      ${RED}[U]${NC} Uninstall"
+        echo -e "  ${BROWN}[B]${NC} Back to main menu"
+        echo ""
+
+        while true; do
+            echo -ne "  ${BOLD}Choice:${NC} "
+            read -r choice
+            case "${choice,,}" in
+                s) monitor_cmd_status; monitor_management_menu "running"; return ;;
+                l) monitor_cmd_logs false; monitor_management_menu "running"; return ;;
+                a) monitor_cmd_alerts; monitor_management_menu "running"; return ;;
+                r) monitor_cmd_restart; monitor_management_menu "running"; return ;;
+                d) monitor_cmd_disable; return ;;
+                u) monitor_cmd_uninstall; return ;;
+                b) return ;;
+                *) echo -e "  ${RED}Invalid choice.${NC}" ;;
+            esac
+        done
+
+    else
+        # Stopped state
+        echo ""
+        echo -e "══════════════════════════════════════════════════════════"
+        echo -e "  ${BOLD}Security Monitor -- ${RED}Stopped${NC}"
+        echo -e "══════════════════════════════════════════════════════════"
+        echo ""
+        echo -e "  The monitor daemon is installed but not running."
+        echo ""
+        echo -e "  ${GREEN}[E]${NC} Enable & start    ${RED}[U]${NC} Uninstall"
+        echo -e "  ${BROWN}[B]${NC} Back to main menu"
+        echo ""
+
+        while true; do
+            echo -ne "  ${BOLD}Choice:${NC} "
+            read -r choice
+            case "${choice,,}" in
+                e) monitor_cmd_enable; monitor_management_menu "running"; return ;;
+                u) monitor_cmd_uninstall; return ;;
+                b) return ;;
+                *) echo -e "  ${RED}Invalid choice.${NC}" ;;
+            esac
+        done
+    fi
+}
+
 monitor_init_interactive() {
     print_section "Monitor Mode Setup"
 
