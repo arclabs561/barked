@@ -7812,6 +7812,47 @@ parse_args() {
                 MONITOR_INTERVAL="$2"
                 shift
                 ;;
+            --install)
+                MONITOR_INSTALL=true
+                ;;
+            --uninstall)
+                # Check if this is monitor --uninstall or standalone --uninstall
+                if [[ "$MONITOR_MODE" == true ]]; then
+                    MONITOR_UNINSTALL=true
+                else
+                    RUN_MODE="uninstall"
+                fi
+                ;;
+            --enable)
+                MONITOR_ENABLE=true
+                ;;
+            --disable)
+                MONITOR_DISABLE=true
+                ;;
+            --restart)
+                MONITOR_RESTART=true
+                ;;
+            --status)
+                MONITOR_STATUS=true
+                ;;
+            --logs)
+                MONITOR_LOGS=true
+                ;;
+            -f)
+                MONITOR_LOGS_FOLLOW=true
+                ;;
+            --alerts)
+                MONITOR_ALERTS=true
+                ;;
+            --health)
+                MONITOR_HEALTH=true
+                ;;
+            --config)
+                MONITOR_CONFIG=true
+                ;;
+            --daemon)
+                MONITOR_DAEMON_MODE=true
+                ;;
             --update)
                 run_update
                 ;;
