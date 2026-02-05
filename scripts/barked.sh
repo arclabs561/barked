@@ -9392,10 +9392,10 @@ clean_preview() {
     local total_files=0 total_bytes=0
     echo ""
     echo -e "  ${BOLD}${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-    printf "  ${BOLD}${GREEN}║${NC}%-58s${BOLD}${GREEN}║${NC}\n" "                   CLEANING PREVIEW"
+    echo -e "  ${BOLD}${GREEN}║                     CLEANING PREVIEW                     ║${NC}"
     echo -e "  ${BOLD}${GREEN}╠══════════════════════════════════════════════════════════╣${NC}"
-    printf "  ${BOLD}${GREEN}║${NC} %-33s %7s %9s %7s ${BOLD}${GREEN}║${NC}\n" "Target" "Files" "Size" "Status"
-    printf "  ${BROWN}${GREEN}║${NC} %-56s ${GREEN}║${NC}\n" "────────────────────────────────────────────────────────"
+    printf "  ${BOLD}${GREEN}║${NC} %-30s %7s %9s %7s ${BOLD}${GREEN}║${NC}\n" "Target" "Files" "Size" "Status"
+    echo -e "  ${GREEN}║${NC} ──────────────────────────────────────────────────────── ${GREEN}║${NC}"
 
     for target in "${ordered_targets[@]}"; do
         local files="${CLEAN_SCAN_FILES[$target]:-0}"
@@ -9419,15 +9419,15 @@ clean_preview() {
         local color="$NC"
         [[ "$status" == "Empty" ]] && color="$BROWN"
 
-        printf "  ${GREEN}║${NC}${color} %-33s %7s %9s %7s ${NC}${GREEN}║${NC}\n" \
+        printf "  ${GREEN}║${NC}${color} %-30s %7s %9s %7s ${NC}${GREEN}║${NC}\n" \
             "${CLEAN_TARGET_NAMES[$target]}" "$file_str" "$size_str" "$status"
 
         total_files=$((total_files + files))
         total_bytes=$((total_bytes + bytes))
     done
 
-    printf "  ${BROWN}${GREEN}║${NC} %-56s ${GREEN}║${NC}\n" "────────────────────────────────────────────────────────"
-    printf "  ${BOLD}${GREEN}║${NC} %-33s %7s %9s ${BOLD}${GREEN}║${NC}\n" "TOTAL" "$total_files" "$(format_bytes $total_bytes)"
+    echo -e "  ${GREEN}║${NC} ──────────────────────────────────────────────────────── ${GREEN}║${NC}"
+    printf "  ${BOLD}${GREEN}║${NC} %-30s %7s %9s %7s ${BOLD}${GREEN}║${NC}\n" "TOTAL" "$total_files" "$(format_bytes $total_bytes)" ""
     echo -e "  ${BOLD}${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
 
     CLEAN_TOTAL_SCAN_FILES=$total_files
@@ -10014,10 +10014,10 @@ print_clean_summary() {
 
     echo ""
     echo -e "  ${BOLD}${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "  ${BOLD}${GREEN}║                  CLEANING SUMMARY                        ║${NC}"
+    echo -e "  ${BOLD}${GREEN}║                     CLEANING SUMMARY                     ║${NC}"
     echo -e "  ${BOLD}${GREEN}╠══════════════════════════════════════════════════════════╣${NC}"
-    printf "  ${BOLD}${GREEN}║${NC} %-33s %7s %9s %7s ${BOLD}${GREEN}║${NC}\n" "Target" "Removed" "Freed" "Status"
-    echo -e "  ${GREEN}║${NC}${BROWN}────────────────────────────────────────────────────────${NC}${GREEN}║${NC}"
+    printf "  ${BOLD}${GREEN}║${NC} %-30s %7s %9s %7s ${BOLD}${GREEN}║${NC}\n" "Target" "Removed" "Freed" "Status"
+    echo -e "  ${GREEN}║${NC} ${BROWN}────────────────────────────────────────────────────────${NC} ${GREEN}║${NC}"
 
     for target in "${ordered_targets[@]}"; do
         local files="${CLEAN_RESULT_FILES[$target]:-0}"
@@ -10037,15 +10037,15 @@ print_clean_summary() {
             partial) status_str="PARTIAL"; color="$BROWN" ;;
         esac
 
-        printf "  ${GREEN}║${NC}${color} %-33s %7s %9s %7s ${NC}${GREEN}║${NC}\n" \
+        printf "  ${GREEN}║${NC}${color} %-30s %7s %9s %7s ${NC}${GREEN}║${NC}\n" \
             "${CLEAN_TARGET_NAMES[$target]}" "$file_str" "$size_str" "$status_str"
 
         total_files=$((total_files + files))
         total_bytes=$((total_bytes + bytes))
     done
 
-    echo -e "  ${GREEN}║${NC}${BROWN}────────────────────────────────────────────────────────${NC}${GREEN}║${NC}"
-    printf "  ${BOLD}${GREEN}║${NC} %-33s %7s %9s         ${BOLD}${GREEN}║${NC}\n" "TOTAL" "$total_files" "$(format_bytes $total_bytes)"
+    echo -e "  ${GREEN}║${NC} ${BROWN}────────────────────────────────────────────────────────${NC} ${GREEN}║${NC}"
+    printf "  ${BOLD}${GREEN}║${NC} %-30s %7s %9s %7s ${BOLD}${GREEN}║${NC}\n" "TOTAL" "$total_files" "$(format_bytes $total_bytes)" ""
     echo -e "  ${BOLD}${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
