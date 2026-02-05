@@ -7594,6 +7594,51 @@ EOFJSON
         "$ALERT_DISCORD_URL" >/dev/null 2>&1 || true
 }
 
+monitor_send_linux() {
+    local severity="$1" title="$2" details="$3"
+
+    # Build body with truncation (same as macOS)
+    local short_details="${details:0:120}"
+    [[ ${#details} -gt 120 ]] && short_details="${short_details}..."
+
+    local body="$short_details"
+    if [[ -n "$BUILT_REMEDIATION" ]]; then
+        local short_fix="${BUILT_REMEDIATION:0:60}"
+        [[ ${#BUILT_REMEDIATION} -gt 60 ]] && short_fix="${short_fix}..."
+        body="${short_details}
+
+Fix: ${short_fix}"
+    fi
+
+    # Timeout based on severity (seconds)
+    local timeout=5
+    [[ "$severity" == "critical" ]] && timeout=10
+
+    # KDE detection - use kdialog
+    if [[ "$XDG_CURRENT_DESKTOP" == *"KDE"* ]] && command -v kdialog &>/dev/null; then
+        kdialog --passivepopup "$body" "$timeout" --title "$title" 2>/dev/null || true
+        return
+    fi
+
+    # libnotify (GNOME, XFCE, COSMIC, Cinnamon, etc.)
+    if command -v notify-send &>/dev/null; then
+        local urgency="normal"
+        [[ "$severity" == "critical" ]] && urgency="critical"
+
+        notify-send --urgency="$urgency" \
+            --expire-time=$((timeout * 1000)) \
+            --app-name="Barked" \
+            "$title" "$body" 2>/dev/null || true
+        return
+    fi
+
+    # No notification tool available - warn once
+    if [[ "$MONITOR_LINUX_NOTIFY_WARNED" != "true" ]]; then
+        MONITOR_LINUX_NOTIFY_WARNED=true
+        echo "Warning: No notification tool found. Install libnotify-bin for desktop notifications." >&2
+    fi
+}
+
 monitor_send_macos() {
     local severity="$1" title="$2" details="$3"
 
