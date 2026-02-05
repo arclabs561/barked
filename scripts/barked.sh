@@ -7019,6 +7019,83 @@ monitor_daemon_stop() {
     esac
 }
 
+install_monitor_daemon_linux() {
+    local start_mode="$1"
+
+    local service_dir="${HOME}/.config/systemd/user"
+    local service_path="${service_dir}/barked-monitor.service"
+    mkdir -p "$service_dir"
+
+    # Get barked path
+    local barked_path
+    barked_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+    # For AC power mode, use wrapper
+    local exec_start="$barked_path --monitor --daemon"
+    if [[ "$start_mode" == "ac_power" ]]; then
+        # Create wrapper script
+        local wrapper_path="${HOME}/.config/barked/monitor-wrapper.sh"
+        cat > "$wrapper_path" << 'EOFWRAPPER'
+#!/bin/bash
+# Only run on AC power
+if [[ -f /sys/class/power_supply/AC/online ]]; then
+    [[ "$(cat /sys/class/power_supply/AC/online)" != "1" ]] && exit 0
+fi
+exec "$@"
+EOFWRAPPER
+        chmod +x "$wrapper_path"
+        exec_start="$wrapper_path $barked_path --monitor --daemon"
+    fi
+
+    cat > "$service_path" << EOFSERVICE
+[Unit]
+Description=Barked Security Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${exec_start}
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=60
+StandardOutput=append:%h/.config/barked/monitor-stdout.log
+StandardError=append:%h/.config/barked/monitor-stderr.log
+
+[Install]
+WantedBy=default.target
+EOFSERVICE
+
+    # Reload and enable
+    systemctl --user daemon-reload
+
+    if [[ "$start_mode" != "manual" ]]; then
+        systemctl --user enable barked-monitor
+        echo -e "  ${GREEN}✓${NC} Systemd service installed and enabled: ${service_path}"
+    else
+        echo -e "  ${GREEN}✓${NC} Systemd service installed (disabled): ${service_path}"
+    fi
+}
+
+uninstall_monitor_daemon_linux() {
+    local service_path="${HOME}/.config/systemd/user/barked-monitor.service"
+
+    if [[ -f "$service_path" ]]; then
+        systemctl --user stop barked-monitor 2>/dev/null || true
+        systemctl --user disable barked-monitor 2>/dev/null || true
+        rm -f "$service_path"
+        systemctl --user daemon-reload
+        echo -e "  ${GREEN}✓${NC} Systemd service removed"
+    else
+        echo -e "  ${BROWN}No systemd service found${NC}"
+    fi
+
+    # Update config
+    if [[ -f "$MONITOR_CONFIG_FILE" ]]; then
+        sed -i 's/DAEMON_INSTALLED=true/DAEMON_INSTALLED=false/' "$MONITOR_CONFIG_FILE" 2>/dev/null || true
+    fi
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # MONITOR MODE — ALERT SYSTEM
 # ═══════════════════════════════════════════════════════════════════
