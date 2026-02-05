@@ -592,6 +592,88 @@ count_root_modules() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# TWO-PHASE EXECUTION: ROOT COMMAND PREVIEW
+# ═══════════════════════════════════════════════════════════════════
+show_root_preview_summary() {
+    local total_cmds
+    total_cmds=$(count_root_commands)
+    local total_mods
+    total_mods=$(count_root_modules)
+
+    if [[ $total_cmds -eq 0 ]]; then
+        echo ""
+        echo -e "  ${GREEN}No root commands needed.${NC}"
+        return 1
+    fi
+
+    echo ""
+    echo -e "══════════════════════════════════════════════════════════"
+    echo -e "  ${BOLD}The following modules require sudo:${NC}"
+    echo -e "══════════════════════════════════════════════════════════"
+    echo ""
+
+    for mod in "${ROOT_MODULES_LIST[@]}"; do
+        if [[ -n "${ROOT_COMMANDS[$mod]:-}" ]]; then
+            local cmd_count
+            cmd_count=$(echo "${ROOT_COMMANDS[$mod]}" | grep -c .)
+            local desc="${ROOT_COMMAND_DESCS[$mod]:-No description}"
+            local cmd_word="command"
+            [[ $cmd_count -gt 1 ]] && cmd_word="commands"
+            printf "  ${BOLD}%-20s${NC} %d %s   %s\n" "$mod" "$cmd_count" "$cmd_word" "$desc"
+        fi
+    done
+
+    echo ""
+    echo -e "  Total: ${BOLD}${total_cmds}${NC} root commands across ${BOLD}${total_mods}${NC} modules"
+    echo ""
+    echo -e "──────────────────────────────────────────────────────────"
+    echo -e "  [P] Preview full commands   [Enter] Continue   [Ctrl+C] Abort"
+    echo -e "──────────────────────────────────────────────────────────"
+
+    return 0
+}
+
+show_root_preview_full() {
+    echo ""
+    echo -e "══════════════════════════════════════════════════════════"
+    echo -e "  ${BOLD}Full root command list:${NC}"
+    echo -e "══════════════════════════════════════════════════════════"
+    echo ""
+
+    for mod in "${ROOT_MODULES_LIST[@]}"; do
+        if [[ -n "${ROOT_COMMANDS[$mod]:-}" ]]; then
+            echo -e "  ${BOLD}${mod}:${NC}"
+            while IFS= read -r cmd; do
+                echo -e "    ${DIM}${cmd}${NC}"
+            done <<< "${ROOT_COMMANDS[$mod]}"
+            echo ""
+        fi
+    done
+
+    echo -e "──────────────────────────────────────────────────────────"
+    echo -e "  [Enter] Continue with sudo   [Ctrl+C] Abort"
+    echo -e "──────────────────────────────────────────────────────────"
+}
+
+prompt_root_preview() {
+    show_root_preview_summary || return 1
+
+    while true; do
+        read -r -n1 -s choice
+        case "$choice" in
+            p|P)
+                show_root_preview_full
+                read -r -n1 -s
+                return 0
+                ;;
+            "")
+                return 0
+                ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # PACKAGE INSTALL HELPERS
 # ═══════════════════════════════════════════════════════════════════
 pkg_install() {
