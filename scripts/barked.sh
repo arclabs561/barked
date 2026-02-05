@@ -6053,6 +6053,150 @@ monitor_check_listeners() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# MONITOR MODE — SUPPLY CHAIN CHECKS
+# ═══════════════════════════════════════════════════════════════════
+monitor_check_supply_chain() {
+    monitor_check_brew_packages
+    monitor_check_app_signatures
+    monitor_check_global_packages
+}
+
+monitor_check_brew_packages() {
+    if ! command -v brew &>/dev/null; then
+        return 0
+    fi
+
+    local current_formulae
+    current_formulae="$(brew list --formula 2>/dev/null | sort | tr '\n' '|' | sed 's/|$//')"
+    local current_casks
+    current_casks="$(brew list --cask 2>/dev/null | sort | tr '\n' '|' | sed 's/|$//')"
+
+    local baseline_formulae
+    baseline_formulae="$(monitor_baseline_read "brew-formulae")"
+    local baseline_casks
+    baseline_casks="$(monitor_baseline_read "brew-casks")"
+
+    if [[ -n "$baseline_formulae" ]]; then
+        local new_formulae
+        new_formulae="$(comm -23 <(echo "$current_formulae" | tr '|' '\n' | sort) <(echo "$baseline_formulae" | tr '|' '\n' | sort))"
+        for pkg in $new_formulae; do
+            [[ -z "$pkg" ]] && continue
+            monitor_send_alert "warning" "supply-chain" "New Homebrew Formula" \
+                "New formula installed: ${pkg}"
+        done
+    fi
+
+    if [[ -n "$baseline_casks" ]]; then
+        local new_casks
+        new_casks="$(comm -23 <(echo "$current_casks" | tr '|' '\n' | sort) <(echo "$baseline_casks" | tr '|' '\n' | sort))"
+        for pkg in $new_casks; do
+            [[ -z "$pkg" ]] && continue
+            monitor_send_alert "warning" "supply-chain" "New Homebrew Cask" \
+                "New cask installed: ${pkg}"
+        done
+    fi
+
+    # Check for untrusted taps
+    local current_taps
+    current_taps="$(brew tap 2>/dev/null | sort)"
+    local default_taps="homebrew/cask|homebrew/core|homebrew/services"
+
+    for tap in $current_taps; do
+        if ! echo "$tap" | grep -qE "^(homebrew/|$default_taps)"; then
+            local prev_warned
+            prev_warned="$(monitor_state_get "supply-chain" "warned_tap_${tap//\//_}")"
+            if [[ -z "$prev_warned" ]]; then
+                monitor_state_set "supply-chain" "warned_tap_${tap//\//_}" "1"
+                monitor_send_alert "warning" "supply-chain" "Non-Default Homebrew Tap" \
+                    "Third-party tap detected: ${tap}"
+            fi
+        fi
+    done
+}
+
+monitor_check_app_signatures() {
+    if [[ "$OS" != "macos" ]]; then
+        return 0
+    fi
+
+    local baseline_sigs
+    baseline_sigs="$(monitor_baseline_read "app-signatures")"
+
+    for app in /Applications/*.app; do
+        [[ ! -d "$app" ]] && continue
+        local app_name
+        app_name="$(basename "$app")"
+
+        local sig_info
+        sig_info="$(codesign -dv "$app" 2>&1 || echo "UNSIGNED")"
+        local sig_status="signed"
+
+        if echo "$sig_info" | grep -q "not signed\|UNSIGNED"; then
+            sig_status="unsigned"
+        elif echo "$sig_info" | grep -q "adhoc"; then
+            sig_status="adhoc"
+        fi
+
+        # Check against baseline
+        if [[ -n "$baseline_sigs" ]]; then
+            local baseline_status
+            baseline_status="$(echo "$baseline_sigs" | grep "^${app_name}=" | cut -d'=' -f2)"
+
+            if [[ -n "$baseline_status" && "$sig_status" != "$baseline_status" ]]; then
+                if [[ "$sig_status" == "unsigned" && "$baseline_status" == "signed" ]]; then
+                    monitor_send_alert "critical" "supply-chain" "App Signature Changed" \
+                        "${app_name} was signed but is now unsigned. Possible tampering."
+                fi
+            elif [[ -z "$baseline_status" && "$sig_status" == "unsigned" ]]; then
+                monitor_send_alert "critical" "supply-chain" "Unsigned App Detected" \
+                    "New unsigned application: ${app_name}"
+            fi
+        fi
+    done
+}
+
+monitor_check_global_packages() {
+    # npm global packages
+    if command -v npm &>/dev/null; then
+        local npm_globals
+        npm_globals="$(npm list -g --depth=0 2>/dev/null | tail -n +2 | awk '{print $2}' | cut -d'@' -f1 | sort | tr '\n' '|' | sed 's/|$//')"
+        local baseline_npm
+        baseline_npm="$(monitor_baseline_read "npm-globals")"
+
+        if [[ -n "$baseline_npm" ]]; then
+            local new_npm
+            new_npm="$(comm -23 <(echo "$npm_globals" | tr '|' '\n' | sort) <(echo "$baseline_npm" | tr '|' '\n' | sort))"
+            for pkg in $new_npm; do
+                [[ -z "$pkg" ]] && continue
+                monitor_send_alert "warning" "supply-chain" "New Global npm Package" \
+                    "New global npm package: ${pkg}"
+            done
+        fi
+    fi
+
+    # pip global packages
+    if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+        local pip_cmd="pip3"
+        command -v pip3 &>/dev/null || pip_cmd="pip"
+
+        local pip_globals
+        pip_globals="$($pip_cmd list --user 2>/dev/null | tail -n +3 | awk '{print $1}' | sort | tr '\n' '|' | sed 's/|$//')"
+        local baseline_pip
+        baseline_pip="$(monitor_baseline_read "pip-globals")"
+
+        if [[ -n "$baseline_pip" ]]; then
+            local new_pip
+            new_pip="$(comm -23 <(echo "$pip_globals" | tr '|' '\n' | sort) <(echo "$baseline_pip" | tr '|' '\n' | sort))"
+            for pkg in $new_pip; do
+                [[ -z "$pkg" ]] && continue
+                monitor_send_alert "warning" "supply-chain" "New Global pip Package" \
+                    "New global pip package: ${pkg}"
+            done
+        fi
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # ARGUMENT PARSING
 # ═══════════════════════════════════════════════════════════════════
 parse_args() {
