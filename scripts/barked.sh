@@ -9041,8 +9041,6 @@ main() {
     if [[ "$AUTO_MODE" == true ]]; then
         PROFILE="$AUTO_PROFILE"
         build_module_list
-        needs_sudo && acquire_sudo
-
         # Pre-change analysis (smart-skip)
         local pca_rc=0
         pre_change_analysis || pca_rc=$?
@@ -9052,13 +9050,13 @@ main() {
         fi
 
         if [[ "$DRY_RUN" == true ]]; then
-            run_all_modules
+            run_all_modules_twophase
             write_dry_run_report
             write_log
             exit 0
         fi
 
-        run_all_modules
+        run_all_modules_twophase
         state_write
         print_summary
         write_log
@@ -9107,7 +9105,6 @@ main() {
 
             select_output_mode
             build_module_list
-            needs_sudo && acquire_sudo
 
             # Pre-change analysis replaces the old "Proceed?" prompt
             local pca_rc=0
@@ -9120,13 +9117,13 @@ main() {
             fi
 
             if [[ "$DRY_RUN" == true ]]; then
-                run_all_modules
+                run_all_modules_twophase
                 write_dry_run_report
                 write_log
                 return
             fi
 
-            run_all_modules
+            run_all_modules_twophase
 
             # Track state for applied modules
             state_write
