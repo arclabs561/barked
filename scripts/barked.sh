@@ -599,6 +599,48 @@ queue_root_command() {
     fi
 }
 
+# Optimistic sudo: try unprivileged first, queue to root batch on permission error
+try_or_queue_root() {
+    local module="$1"
+    shift
+    local cmd="$*"
+
+    # Check against always-root patterns — skip unprivileged attempt
+    for pattern in "${ALWAYS_ROOT_PATTERNS[@]}"; do
+        if [[ "$cmd" == *"$pattern"* ]]; then
+            queue_root_command "$module" "$cmd"
+            log_entry "$module" "optimistic" "root-pattern" "Matched always-root pattern, queued"
+            return 0
+        fi
+    done
+
+    # Attempt unprivileged execution
+    local stderr_file
+    stderr_file="$(mktemp)"
+
+    if eval "$cmd" 2>"$stderr_file"; then
+        rm -f "$stderr_file"
+        log_entry "$module" "optimistic" "ok" "Success without sudo"
+        return 0
+    fi
+
+    local stderr_content
+    stderr_content="$(cat "$stderr_file")"
+    rm -f "$stderr_file"
+
+    # Check if failure was permission-related
+    if echo "$stderr_content" | grep -qiE \
+        "permission denied|operation not permitted|must be root|not authorized|requires admin"; then
+        queue_root_command "$module" "$cmd"
+        log_entry "$module" "optimistic" "queued" "Permission error, queued for root"
+        return 0
+    fi
+
+    # Genuine failure (not permission-related)
+    log_entry "$module" "optimistic" "fail" "Non-permission failure: ${stderr_content:0:200}"
+    return 1
+}
+
 # Set description for a module's root operations
 set_root_description() {
     local module="$1"
