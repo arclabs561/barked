@@ -6152,12 +6152,45 @@ write_report() {
 write_log() {
     mkdir -p "$(dirname "$LOG_FILE")"
     {
-        echo "# Hardening Log — ${TIMESTAMP}"
-        echo "Profile: ${PROFILE} | OS: ${OS}"
+        echo "══════════════════════════════════════════════════════════════════"
+        echo "BARKED HARDENING LOG — ${TIMESTAMP}"
+        echo "Profile: ${PROFILE:-none} | Mode: ${RUN_MODE} | OS: ${OS}"
+        if [[ "$NO_SUDO_MODE" == true ]]; then
+            echo "[MODE] --no-sudo: root modules skipped"
+        fi
+        echo "══════════════════════════════════════════════════════════════════"
         echo ""
+
+        # Group entries by phase
+        local in_root_section=false
         for entry in "${LOG_ENTRIES[@]}"; do
-            echo "$entry"
+            # Detect phase transitions
+            if [[ "$entry" == *"[PHASE]"*"[root-collect]"* && "$in_root_section" == false ]]; then
+                echo ""
+                echo "═══ ROOT MODULES (sudo) ═══"
+                in_root_section=true
+            elif [[ "$entry" == *"[PHASE]"*"[userspace]"*"[start]"* ]]; then
+                echo "═══ USER-SPACE MODULES ═══"
+            fi
+
+            # Format [ROOT] entries specially
+            if [[ "$entry" == *"[root-cmd]"*"[exec]"* ]]; then
+                local cmd="${entry##*] }"
+                echo "[ROOT] $cmd"
+            elif [[ "$entry" == *"[root-cmd]"*"[exit]"* ]]; then
+                local code="${entry##*: }"
+                echo "[ROOT] EXIT $code"
+            else
+                echo "$entry"
+            fi
         done
+
+        echo ""
+        echo "═══ SUMMARY ═══"
+        echo "Applied: ${COUNT_APPLIED} | Skipped: ${COUNT_SKIPPED} | Failed: ${COUNT_FAILED}"
+        if [[ "$ROOT_BATCH_ABORTED" == true ]]; then
+            echo "Root batch: ABORTED at ${ROOT_BATCH_FAIL_MODULE}"
+        fi
     } > "$LOG_FILE"
     echo -e "  ${BROWN}Log written to: ${LOG_FILE}${NC}"
 }
