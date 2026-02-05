@@ -108,6 +108,26 @@ ROOT_BATCH_FAIL_CMD=""           # Command that failed
 ROOT_BATCH_FAIL_EXIT=0           # Exit code of failed command
 ROOT_BATCH_FAIL_MODULE=""        # Module that failed
 
+# Optimistic sudo: commands matching these patterns skip unprivileged attempt
+ALWAYS_ROOT_PATTERNS=(
+    "defaults write /Library/Preferences"
+    "socketfilterfw"
+    "iptables"
+    "sysctl --system"
+    "systemctl"
+    "ufw"
+    "tee /etc/"
+    "cp /etc/"
+    "sed -i"
+    "aa-enforce"
+    "grub-mkconfig"
+    "update-grub"
+    "usermod"
+    "dpkg-reconfigure"
+    "aide --init"
+    "rkhunter"
+)
+
 # Clean log
 if [[ -d "${SCRIPT_DIR}/../audits" ]]; then
     CLEAN_LOG_FILE="${SCRIPT_DIR}/../audits/clean-log-${DATE}.txt"
