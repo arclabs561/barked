@@ -8653,6 +8653,9 @@ parse_args() {
             --update)
                 run_update
                 ;;
+            --update-app)
+                run_update_app
+                ;;
             --uninstall-self)
                 run_uninstall_self
                 ;;
@@ -8695,6 +8698,7 @@ parse_args() {
                 echo "    --interval <secs>    Set check interval (default: 300)"
                 echo "  --version, -v          Show version and exit"
                 echo "  --update               Update barked to the latest version"
+                echo "  --update-app           Update both CLI and Barked.app"
                 echo "  --uninstall-self       Remove barked from system PATH"
                 echo "  --help, -h             Show this help"
                 echo ""
@@ -10250,6 +10254,120 @@ run_update() {
     }
 
     echo -e "${GREEN}Updated to v${latest}.${NC}"
+    exit 0
+}
+
+# Update both the CLI script and /Applications/Barked.app (called by GUI)
+run_update_app() {
+    echo -e "${BROWN}Checking for updates...${NC}"
+
+    local install_path
+    install_path="$(command -v barked 2>/dev/null)" || install_path="$0"
+
+    local latest
+    latest="$(fetch_latest_version)" || {
+        echo -e "${RED}Could not reach GitHub to check for updates.${NC}"
+        exit 1
+    }
+
+    if ! version_gt "$latest" "$VERSION"; then
+        echo -e "${GREEN}Already up to date (v${VERSION}).${NC}"
+        exit 0
+    fi
+
+    local base_url="https://github.com/${GITHUB_REPO}/releases/latest/download"
+    local tmp_dir
+    tmp_dir="$(mktemp -d /tmp/barked-update-XXXXXX)" || {
+        echo -e "${RED}Failed to create temp directory.${NC}"
+        exit 1
+    }
+    trap 'rm -rf "$tmp_dir"' EXIT
+
+    # --- CLI script update ---
+    local cli_updated=false
+    if [[ -w "$install_path" ]]; then
+        local tmp_script="${tmp_dir}/barked.sh"
+        echo -e "  Downloading CLI v${latest}..."
+        curl -fsSL --connect-timeout 5 --max-time 30 "${base_url}/barked.sh" -o "$tmp_script" 2>/dev/null || {
+            echo -e "${RED}Failed to download CLI update.${NC}"
+            exit 1
+        }
+
+        local expected_hash actual_hash
+        expected_hash="$(curl -fsSL --connect-timeout 5 --max-time 10 "${base_url}/barked.sh.sha256" 2>/dev/null | awk '{print $1}')" || {
+            echo -e "${RED}Failed to download CLI checksum.${NC}"
+            exit 1
+        }
+        [[ -z "$expected_hash" ]] && { echo -e "${RED}Failed to download CLI checksum.${NC}"; exit 1; }
+
+        actual_hash="$(shasum -a 256 "$tmp_script" | awk '{print $1}')"
+        if [[ "$actual_hash" != "$expected_hash" ]]; then
+            echo -e "${RED}CLI checksum verification failed — aborting.${NC}"
+            exit 1
+        fi
+
+        if ! bash -n "$tmp_script" 2>/dev/null; then
+            echo -e "${RED}Downloaded CLI has syntax errors — aborting.${NC}"
+            exit 1
+        fi
+
+        chmod 755 "$tmp_script"
+        mv "$tmp_script" "$install_path" 2>/dev/null || cp "$tmp_script" "$install_path" 2>/dev/null || {
+            echo -e "${RED}Failed to replace ${install_path}.${NC}"
+            exit 1
+        }
+        echo -e "${GREEN}CLI updated to v${latest}.${NC}"
+        cli_updated=true
+    else
+        echo -e "${BROWN}Skipping CLI update — ${install_path} is not user-writable.${NC}"
+    fi
+
+    # --- App bundle update ---
+    if [[ -d "/Applications/Barked.app" ]]; then
+        local tmp_tarball="${tmp_dir}/Barked.app.tar.gz"
+        echo -e "  Downloading Barked.app v${latest}..."
+        curl -fsSL --connect-timeout 5 --max-time 60 "${base_url}/Barked.app.tar.gz" -o "$tmp_tarball" 2>/dev/null || {
+            echo -e "${RED}Failed to download app bundle.${NC}"
+            exit 1
+        }
+
+        local expected_app_hash actual_app_hash
+        expected_app_hash="$(curl -fsSL --connect-timeout 5 --max-time 10 "${base_url}/Barked.app.tar.gz.sha256" 2>/dev/null | awk '{print $1}')" || {
+            echo -e "${RED}Failed to download app checksum.${NC}"
+            exit 1
+        }
+        [[ -z "$expected_app_hash" ]] && { echo -e "${RED}Failed to download app checksum.${NC}"; exit 1; }
+
+        actual_app_hash="$(shasum -a 256 "$tmp_tarball" | awk '{print $1}')"
+        if [[ "$actual_app_hash" != "$expected_app_hash" ]]; then
+            echo -e "${RED}App checksum verification failed — aborting.${NC}"
+            exit 1
+        fi
+
+        tar -xzf "$tmp_tarball" -C "$tmp_dir" 2>/dev/null || {
+            echo -e "${RED}Failed to extract app bundle.${NC}"
+            exit 1
+        }
+
+        if [[ ! -d "${tmp_dir}/Barked.app" ]]; then
+            echo -e "${RED}Extracted archive does not contain Barked.app.${NC}"
+            exit 1
+        fi
+
+        rm -rf /Applications/Barked.app
+        mv "${tmp_dir}/Barked.app" /Applications/Barked.app || {
+            echo -e "${RED}Failed to install Barked.app to /Applications.${NC}"
+            exit 1
+        }
+
+        echo -e "${GREEN}Barked.app updated to v${latest}.${NC}"
+        echo "__BARKED_RELAUNCH__"
+    else
+        if [[ "$cli_updated" == true ]]; then
+            echo -e "${GREEN}CLI updated (Barked.app not installed — skipping app update).${NC}"
+        fi
+    fi
+
     exit 0
 }
 

@@ -26,7 +26,20 @@ struct MenuBarView: View {
             .foregroundStyle(.secondary)
 
         Button("Check for Updates...") {
-            Task { await runner.runPrivileged(["--update"]) }
+            Task {
+                let result = await runner.runPrivileged(["--update-app"])
+                if result.output.contains("__BARKED_RELAUNCH__") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        let proc = Process()
+                        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                        proc.arguments = ["-n", "/Applications/Barked.app"]
+                        try? proc.run()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            NSApplication.shared.terminate(nil)
+                        }
+                    }
+                }
+            }
         }
         .disabled(runner.isRunning)
 
