@@ -12,12 +12,19 @@ class ScriptRunner: ObservableObject {
 
     /// Path to barked.sh — prefers system install, falls back to bundled
     var scriptPath: String {
-        let systemPath = "/usr/local/bin/barked"
-        if FileManager.default.isExecutableFile(atPath: systemPath) {
-            return systemPath
+        for path in ["/usr/local/bin/barked", "\(FileManager.default.homeDirectoryForCurrentUser.path)/.local/bin/barked"] {
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
         }
         return Bundle.main.path(forResource: "barked", ofType: "sh")
             ?? "/usr/local/bin/barked"
+    }
+
+    /// Path to Bash 4+ — prefers Homebrew, falls back to system
+    var bashPath: String {
+        for path in ["/opt/homebrew/bin/bash", "/usr/local/bin/bash"] {
+            if FileManager.default.isExecutableFile(atPath: path) { return path }
+        }
+        return "/bin/bash"
     }
 
     /// Run barked.sh with arguments, streaming stdout/stderr
@@ -27,7 +34,7 @@ class ScriptRunner: ObservableObject {
         exitCode = nil
 
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        proc.executableURL = URL(fileURLWithPath: bashPath)
         proc.arguments = [scriptPath] + arguments
 
         let pipe = Pipe()
@@ -70,7 +77,7 @@ class ScriptRunner: ObservableObject {
         let args = ([scriptPath] + arguments)
             .map { "'\($0.replacingOccurrences(of: "'", with: "'\\''"))'" }
             .joined(separator: " ")
-        let script = "do shell script \"/bin/bash \(args)\" with administrator privileges"
+        let script = "do shell script \"\(bashPath) \(args)\" with administrator privileges"
 
         var result = ""
         var code: Int32 = 0

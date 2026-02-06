@@ -8,7 +8,7 @@ let package = Package(
         .executableTarget(
             name: "Barked",
             path: "Sources/Barked",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist", "Resources"]
         )
     ]
 )

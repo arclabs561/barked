@@ -22,6 +22,11 @@ cp "${BUILD_DIR}/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 # Copy Info.plist
 cp "${PKG_DIR}/Sources/Barked/Info.plist" "${APP_BUNDLE}/Contents/"
 
+# Copy app icon
+if [[ -f "${PKG_DIR}/Sources/Barked/Resources/AppIcon.icns" ]]; then
+    cp "${PKG_DIR}/Sources/Barked/Resources/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
+fi
+
 # Bundle barked.sh so the app works standalone
 if [[ -f "${SCRIPT_DIR}/../scripts/barked.sh" ]]; then
     cp "${SCRIPT_DIR}/../scripts/barked.sh" "${APP_BUNDLE}/Contents/Resources/barked.sh"

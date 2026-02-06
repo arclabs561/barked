@@ -38,7 +38,6 @@ struct ContentView: View {
                     .padding(.bottom, 8)
                     .opacity(0.85)
             }
-            .navigationTitle("Barked")
         } detail: {
             switch selection {
             case .harden: HardenView()

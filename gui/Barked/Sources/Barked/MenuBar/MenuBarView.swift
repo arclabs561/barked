@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @StateObject private var runner = ScriptRunner()
+    @Environment(\.openWindow) private var openWindow
     private let configReader = ConfigReader()
 
     var body: some View {
@@ -17,7 +18,8 @@ struct MenuBarView: View {
         Divider()
 
         Button("Open Barked...") {
-            openMainWindow()
+            openWindow(id: "main")
+            NSApplication.shared.activate(ignoringOtherApps: true)
         }
 
         Divider()
@@ -27,8 +29,8 @@ struct MenuBarView: View {
 
         Button("Check for Updates...") {
             Task {
-                let result = await runner.runPrivileged(["--update-app"])
-                if result.output.contains("__BARKED_RELAUNCH__") {
+                await runner.run(["--update-app"])
+                if runner.output.contains("__BARKED_RELAUNCH__") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         let proc = Process()
                         proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -50,11 +52,4 @@ struct MenuBarView: View {
         }
     }
 
-    private func openMainWindow() {
-        if let window = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "main" }) {
-            window.makeKeyAndOrderFront(nil)
-        }
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        NSApp.sendAction(#selector(NSWindow.makeKeyAndOrderFront(_:)), to: nil, from: nil)
-    }
 }
