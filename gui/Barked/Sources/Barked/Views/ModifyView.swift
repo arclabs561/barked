@@ -33,9 +33,8 @@ struct ModifyView: View {
 
             HStack {
                 Button("Apply \(enabledModules.count) Modules") {
-                    let modules = enabledModules.joined(separator: ",")
                     Task {
-                        _ = await runner.runPrivileged(["--modify", "--modules", modules, "--yes"])
+                        _ = await runner.runPrivileged(["--auto", "--modify"])
                     }
                 }
                 .buttonStyle(.borderedProminent)

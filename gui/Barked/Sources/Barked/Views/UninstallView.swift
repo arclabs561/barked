@@ -28,7 +28,7 @@ struct UninstallView: View {
 
             Button("Uninstall") {
                 Task {
-                    _ = await runner.runPrivileged(["--uninstall", "--yes"])
+                    _ = await runner.runPrivileged(["--auto", "--uninstall"])
                 }
             }
             .buttonStyle(.borderedProminent)

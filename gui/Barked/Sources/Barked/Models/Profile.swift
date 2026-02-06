@@ -20,5 +20,5 @@ enum Profile: String, CaseIterable, Identifiable {
         }
     }
 
-    var cliFlag: [String] { ["--profile", rawValue, "--auto", "--yes"] }
+    var cliFlag: [String] { ["--auto", "--profile", rawValue] }
 }
