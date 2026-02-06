@@ -5,8 +5,13 @@ state/
 docs/plans/
 CLAUDE.md
 
+.DS_Store
+
 # Previews
-gui/preview.html
+*.html
+
+# Build artifacts
+*.iconset/
 
 # Release artifacts
 gui/Barked.app/

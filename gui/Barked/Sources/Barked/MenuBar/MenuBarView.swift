@@ -30,16 +30,33 @@ struct MenuBarView: View {
         Button("Check for Updates...") {
             Task {
                 await runner.run(["--update-app"])
-                if runner.output.contains("__BARKED_RELAUNCH__") {
+                let output = runner.output
+
+                if output.contains("__BARKED_RELAUNCH__") {
+                    showAlert(
+                        title: "Update Installed",
+                        message: "Barked has been updated. The app will now relaunch.",
+                        style: .informational
+                    )
+                    let proc = Process()
+                    proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                    proc.arguments = ["-n", "/Applications/Barked.app"]
+                    try? proc.run()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        let proc = Process()
-                        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                        proc.arguments = ["-n", "/Applications/Barked.app"]
-                        try? proc.run()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            NSApplication.shared.terminate(nil)
-                        }
+                        NSApplication.shared.terminate(nil)
                     }
+                } else if output.contains("Already up to date") {
+                    showAlert(
+                        title: "No Updates Available",
+                        message: "You're already running the latest version of Barked.",
+                        style: .informational
+                    )
+                } else {
+                    showAlert(
+                        title: "Update Failed",
+                        message: output.isEmpty ? "Could not check for updates." : output,
+                        style: .critical
+                    )
                 }
             }
         }
@@ -52,4 +69,13 @@ struct MenuBarView: View {
         }
     }
 
+    private func showAlert(title: String, message: String, style: NSAlert.Style) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
+        alert.addButton(withTitle: "OK")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
 }
