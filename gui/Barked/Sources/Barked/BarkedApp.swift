@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UserNotifications
 
 @main
 struct BarkedApp: App {
@@ -98,6 +99,7 @@ struct BarkedApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if let window = NSApplication.shared.windows.first(where: { $0.title == "Barked" }) {
                 window.makeKeyAndOrderFront(nil)

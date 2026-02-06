@@ -1,4 +1,14 @@
 import SwiftUI
+import UserNotifications
+
+private func sendCleanNotification(success: Bool) {
+    let content = UNMutableNotificationContent()
+    content.title = "Barked"
+    content.body = success ? "Cleaning completed successfully." : "Cleaning finished with errors."
+    content.sound = .default
+    let request = UNNotificationRequest(identifier: "barked-clean-\(UUID())", content: content, trigger: nil)
+    Task { try? await UNUserNotificationCenter.current().add(request) }
+}
 
 struct CleanView: View {
     @StateObject private var runner = ScriptRunner()
@@ -39,8 +49,21 @@ struct CleanView: View {
         Text("System Cleaner")
             .font(.title2.bold())
 
-        Text("Select categories to clean:")
-            .foregroundStyle(.secondary)
+        HStack {
+            Text("Select categories to clean:")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Select All") {
+                selectedCategories = Set(CleanCategory.all.map(\.id))
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            Button("Deselect All") {
+                selectedCategories = []
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
 
         ForEach(CleanCategory.all) { cat in
             Toggle(cat.displayName, isOn: Binding(
@@ -65,6 +88,7 @@ struct CleanView: View {
             Button("Clean Now") {
                 Task {
                     _ = await runner.runPrivileged(["--clean", "--force", "--clean-cats", catsArg])
+                    sendCleanNotification(success: runner.exitCode == 0)
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -94,8 +118,7 @@ private struct ScheduleContent: View {
     @State private var frequency: Frequency = .daily
     @State private var editing = false
     @State private var statusMessage: String?
-
-    private let config = ConfigReader()
+    @State private var schedConfig: ScheduleConfig?
 
     enum Frequency: String, CaseIterable {
         case daily = "Daily"
@@ -103,29 +126,34 @@ private struct ScheduleContent: View {
     }
 
     var body: some View {
-        Text("Scheduled Cleaning")
-            .font(.title2.bold())
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Scheduled Cleaning")
+                .font(.title2.bold())
 
-        if editing {
-            editingForm
-        } else {
-            currentStatus
+            if editing {
+                editingForm
+            } else {
+                currentStatus
+            }
+
+            if !runner.output.isEmpty {
+                OutputLogView(
+                    output: runner.output,
+                    statusLine: runner.exitCode == 0 ? "Schedule removed" : "Failed to remove schedule"
+                )
+            }
+
+            Spacer()
         }
+        .onAppear { reloadConfig() }
+    }
 
-        if !runner.output.isEmpty {
-            OutputLogView(
-                output: runner.output,
-                statusLine: runner.exitCode == 0 ? "Schedule removed" : "Failed to remove schedule"
-            )
-        }
-
-        Spacer()
+    private func reloadConfig() {
+        schedConfig = ConfigReader().readScheduleConfig()
     }
 
     @ViewBuilder
     private var currentStatus: some View {
-        let schedConfig = config.readScheduleConfig()
-
         if let sched = schedConfig, sched.enabled {
             Label("Active: \(sched.schedule.capitalized)", systemImage: "clock.badge.checkmark")
                 .foregroundStyle(.green)
@@ -145,7 +173,10 @@ private struct ScheduleContent: View {
 
             if let sched = schedConfig, sched.enabled {
                 Button("Remove Schedule") {
-                    Task { await runner.run(["--clean-unschedule"]) }
+                    Task {
+                        await runner.run(["--clean-unschedule"])
+                        reloadConfig()
+                    }
                 }
                 .foregroundStyle(.red)
             }
@@ -154,8 +185,21 @@ private struct ScheduleContent: View {
 
     @ViewBuilder
     private var editingForm: some View {
-        Text("Select categories:")
-            .foregroundStyle(.secondary)
+        HStack {
+            Text("Select categories:")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Select All") {
+                schedCategories = Set(CleanCategory.all.map(\.id))
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            Button("Deselect All") {
+                schedCategories = []
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
 
         ForEach(CleanCategory.all) { cat in
             Toggle(cat.displayName, isOn: Binding(
@@ -194,7 +238,7 @@ private struct ScheduleContent: View {
     }
 
     private func loadExisting() {
-        if let sched = config.readScheduleConfig(), sched.enabled {
+        if let sched = schedConfig, sched.enabled {
             schedCategories = Set(sched.categories)
             frequency = sched.schedule == "weekly" ? .weekly : .daily
         } else {
@@ -209,7 +253,6 @@ private struct ScheduleContent: View {
         let configPath = configDir.appendingPathComponent("scheduled-clean.json")
         let cats = CleanCategory.all.map(\.id).filter { schedCategories.contains($0) }
 
-        // Write config JSON
         let json: [String: Any] = [
             "enabled": true,
             "schedule": frequency.rawValue.lowercased(),
@@ -229,22 +272,22 @@ private struct ScheduleContent: View {
             return
         }
 
-        // Install launchd plist
         if installLaunchAgent() {
             statusMessage = "Schedule saved"
             editing = false
+            reloadConfig()
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { statusMessage = nil }
         }
     }
 
     private func installLaunchAgent() -> Bool {
-        let scriptRunner = ScriptRunner()
-        let barkedPath = scriptRunner.scriptPath
+        let sr = ScriptRunner()
+        let barkedPath = sr.scriptPath
         let plistDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents")
         let plistPath = plistDir.appendingPathComponent("com.barked.scheduled-clean.plist")
 
-        var intervalXML: String
+        let intervalXML: String
         switch frequency {
         case .daily:
             intervalXML = """
@@ -301,7 +344,6 @@ private struct ScheduleContent: View {
 
         do {
             try FileManager.default.createDirectory(at: plistDir, withIntermediateDirectories: true)
-            // Unload existing job
             let unload = Process()
             unload.executableURL = URL(fileURLWithPath: "/bin/launchctl")
             unload.arguments = ["unload", plistPath.path]

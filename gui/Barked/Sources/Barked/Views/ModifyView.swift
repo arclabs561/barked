@@ -6,8 +6,21 @@ struct ModifyView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Modify Modules")
-                .font(.title2.bold())
+            HStack {
+                Text("Modify Modules")
+                    .font(.title2.bold())
+                Spacer()
+                Button("Select All") {
+                    enabledModules = Set(HardenModule.all.map(\.id))
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                Button("Deselect All") {
+                    enabledModules = []
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {

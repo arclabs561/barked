@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct MenuBarView: View {
     @StateObject private var runner = ScriptRunner()
@@ -8,7 +9,15 @@ struct MenuBarView: View {
     var body: some View {
         Button("Quick Clean") {
             let allCats = CleanCategory.all.map(\.id).joined(separator: ",")
-            Task { await runner.run(["--clean", "--force", "--clean-cats", allCats]) }
+            Task {
+                await runner.run(["--clean", "--force", "--clean-cats", allCats])
+                let content = UNMutableNotificationContent()
+                content.title = "Barked"
+                content.body = runner.exitCode == 0 ? "Quick clean completed." : "Quick clean finished with errors."
+                content.sound = .default
+                let request = UNNotificationRequest(identifier: "barked-clean-\(UUID())", content: content, trigger: nil)
+                try? await UNUserNotificationCenter.current().add(request)
+            }
         }
         .disabled(runner.isRunning)
 
