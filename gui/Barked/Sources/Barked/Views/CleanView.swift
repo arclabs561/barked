@@ -66,10 +66,15 @@ struct CleanView: View {
 
             if runner.isRunning {
                 ProgressView().controlSize(.small)
+                MascotView(mood: .windy, pixelSize: 2.5)
             }
         }
 
         if !runner.output.isEmpty {
+            if !runner.isRunning && runner.exitCode == 0 {
+                SuccessBanner(message: "Clean complete")
+            }
+
             OutputLogView(
                 output: runner.output,
                 statusLine: runner.exitCode == 0 ? "Clean complete" : "Clean finished with errors"

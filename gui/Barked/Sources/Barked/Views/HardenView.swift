@@ -31,6 +31,10 @@ struct HardenView: View {
             }
 
             if !runner.output.isEmpty {
+                if !runner.isRunning && runner.exitCode == 0 {
+                    SuccessBanner(message: "Hardening complete")
+                }
+
                 OutputLogView(
                     output: runner.output,
                     statusLine: runner.exitCode == 0 ? "Hardening complete" : "Hardening finished with errors"

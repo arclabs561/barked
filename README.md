@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="mascots/barked-mascot-idle.svg" width="128" height="128" alt="Barked mascot — a pixelated pine tree standing guard">
+  <img src="mascots/barked-mascot-idle-nobg.svg" width="128" height="128" alt="Barked mascot — a pixelated pine tree standing guard">
 </p>
 
 # Barked

@@ -25,12 +25,20 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SidebarItem.allCases, selection: $selection) { item in
-                Label(item.rawValue, systemImage: item.icon)
-                    .tag(item)
+            VStack {
+                List(SidebarItem.allCases, selection: $selection) { item in
+                    Label(item.rawValue, systemImage: item.icon)
+                        .tag(item)
+                }
+                .listStyle(.sidebar)
+
+                Spacer()
+
+                MascotView(mood: .idle, pixelSize: 3)
+                    .padding(.bottom, 8)
+                    .opacity(0.85)
             }
             .navigationTitle("Barked")
-            .listStyle(.sidebar)
         } detail: {
             switch selection {
             case .harden: HardenView()
@@ -38,8 +46,23 @@ struct ContentView: View {
             case .clean: CleanView()
             case .monitor: MonitorView()
             case .uninstall: UninstallView()
-            case nil: Text("Select an option").foregroundStyle(.secondary)
+            case nil: welcomeView
             }
         }
+    }
+
+    private var welcomeView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            MascotView(mood: .idle, pixelSize: 6)
+            Text("Welcome to Barked")
+                .font(.title2.bold())
+            Text("Tough outer layer for your system.\nPick a section from the sidebar to get started.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .font(.callout)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

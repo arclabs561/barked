@@ -45,6 +45,10 @@ struct ModifyView: View {
             }
 
             if !runner.output.isEmpty {
+                if !runner.isRunning && runner.exitCode == 0 {
+                    SuccessBanner(message: "Modules applied")
+                }
+
                 OutputLogView(
                     output: runner.output,
                     statusLine: runner.exitCode == 0 ? "Modules applied" : "Finished with errors"
