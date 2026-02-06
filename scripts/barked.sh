@@ -10316,6 +10316,27 @@ run_uninstall_self() {
     fi
 
     rm -f "${TMPDIR:-/tmp}/barked-update-check-$(id -u)"
+
+    # Remove Barked.app from /Applications if present
+    if [[ -d "/Applications/Barked.app" ]]; then
+        echo ""
+        echo -ne "  ${BOLD}Also remove /Applications/Barked.app? (y/N):${NC} "
+        read -r confirm_app
+        if [[ "${confirm_app,,}" == "y" ]]; then
+            if [[ -w "/Applications/Barked.app" ]]; then
+                rm -rf "/Applications/Barked.app"
+            else
+                acquire_sudo || {
+                    echo -e "  ${RED}Cannot remove Barked.app without admin privileges.${NC}"
+                    echo -e "${GREEN}barked CLI has been uninstalled.${NC}"
+                    exit 0
+                }
+                run_as_root rm -rf /Applications/Barked.app
+            fi
+            echo -e "  ${GREEN}Removed /Applications/Barked.app.${NC}"
+        fi
+    fi
+
     echo -e "${GREEN}barked has been uninstalled.${NC}"
     exit 0
 }
