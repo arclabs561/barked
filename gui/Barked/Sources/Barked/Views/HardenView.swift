@@ -3,11 +3,24 @@ import SwiftUI
 struct HardenView: View {
     @StateObject private var runner = ScriptRunner()
     @State private var selectedProfile: Profile?
+    private let config = ConfigReader()
+
+    private var activeProfile: (profile: String, lastRun: String)? {
+        config.readActiveProfile()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Hardening Profile")
-                .font(.title2.bold())
+            HStack(alignment: .firstTextBaseline) {
+                Text("Hardening Profile")
+                    .font(.title2.bold())
+                Spacer()
+                if let active = activeProfile {
+                    Label(active.profile.capitalized, systemImage: "checkmark.shield.fill")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.green)
+                }
+            }
 
             ForEach(Profile.allCases) { profile in
                 ProfileCard(profile: profile, isSelected: selectedProfile == profile) {

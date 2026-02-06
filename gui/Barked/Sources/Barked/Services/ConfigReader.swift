@@ -27,6 +27,21 @@ class ConfigReader {
         return config
     }
 
+    var statePath: URL {
+        userConfigDir.appendingPathComponent("state.json")
+    }
+
+    func readActiveProfile() -> (profile: String, lastRun: String)? {
+        guard let data = try? Data(contentsOf: statePath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let profile = json["profile"] as? String,
+              !profile.isEmpty, profile != "unknown" else {
+            return nil
+        }
+        let lastRun = json["last_run"] as? String ?? ""
+        return (profile, lastRun)
+    }
+
     var scheduleDisplayText: String {
         guard let config = readScheduleConfig(), config.enabled else {
             return "No schedule configured"
