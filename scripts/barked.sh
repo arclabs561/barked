@@ -10265,7 +10265,7 @@ run_update() {
         exit 1
     fi
 
-    if ! bash -n "$tmp_file" 2>/dev/null; then
+    if ! "${BASH}" -n "$tmp_file" 2>/dev/null; then
         echo -e "${RED}Downloaded file has syntax errors — aborting update.${NC}"
         rm -f "$tmp_file"
         exit 1
@@ -10336,7 +10336,7 @@ run_update_app() {
             exit 1
         fi
 
-        if ! bash -n "$tmp_script" 2>/dev/null; then
+        if ! "${BASH}" -n "$tmp_script" 2>/dev/null; then
             echo -e "${RED}Downloaded CLI has syntax errors — aborting.${NC}"
             exit 1
         fi
