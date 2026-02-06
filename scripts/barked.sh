@@ -3686,18 +3686,18 @@ select_profile() {
 
     echo -e "${BOLD}Select a hardening profile:${NC}"
     echo ""
-    echo -e "  ${GREEN}[1]${NC} Standard  — Encrypted disk, firewall, secure DNS, auto-updates, basic browser hardening"
-    echo -e "  ${GREEN}[2]${NC} High      — Standard + outbound firewall, hostname scrubbing, monitoring tools, SSH hardening, telemetry disabled"
-    echo -e "  ${GREEN}[3]${NC} Paranoid  — High + MAC rotation, traffic obfuscation, VPN kill switch, full audit system, metadata stripping, border crossing prep"
-    echo -e "  ${GREEN}[4]${NC} Advanced  — Custom questionnaire (choose per-category)"
+    echo -e "  ${GREEN}[1]${NC} 🛡  Standard  — Encrypted disk, firewall, secure DNS, auto-updates, basic browser hardening"
+    echo -e "  ${GREEN}[2]${NC} 🔒 High      — Standard + outbound firewall, hostname scrubbing, monitoring tools, SSH hardening, telemetry disabled"
+    echo -e "  ${GREEN}[3]${NC} 🔐 Paranoid  — High + MAC rotation, traffic obfuscation, VPN kill switch, full audit system, metadata stripping, border crossing prep"
+    echo -e "  ${GREEN}[4]${NC} 🔧 Advanced  — Custom questionnaire (choose per-category)"
     echo ""
-    echo -e "  ${MAGENTA}[M]${NC} Modify    — Add or remove individual modules"
-    echo -e "  ${CYAN}[C]${NC} Clean     — System cleaner (caches, logs, privacy traces)"
+    echo -e "  ${MAGENTA}[M]${NC} ✏️  Modify    — Add or remove individual modules"
+    echo -e "  ${CYAN}[C]${NC} 🧹 Clean     — System cleaner (caches, logs, privacy traces)"
 
-    echo -e "  ${YELLOW}[O]${NC} Monitor   — Continuous security monitoring (VPN, supply chain, network)"
+    echo -e "  ${YELLOW}[O]${NC} 👁  Monitor   — Continuous security monitoring (VPN, supply chain, network)"
 
-    echo -e "  ${RED}[U]${NC} Uninstall — Remove all hardening changes"
-    echo -e "  ${BROWN}[Q] Quit${NC}"
+    echo -e "  ${RED}[U]${NC} 🗑  Uninstall — Remove all hardening changes"
+    echo -e "  ${BROWN}[Q] 🚪 Quit${NC}"
     echo ""
 
     while true; do
