@@ -92,6 +92,17 @@ echo -e "  Bash 4+:         ${GREEN}${BASH4}${NC}"
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════
+# CONFIRM
+# ═══════════════════════════════════════════════════════════════════
+echo -ne "Proceed with installation? [Y/n] "
+read -r confirm </dev/tty
+if [[ "${confirm,,}" == "n" ]]; then
+    echo "Installation cancelled."
+    exit 0
+fi
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════
 # DOWNLOAD
 # ═══════════════════════════════════════════════════════════════════
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/barked.sh"
@@ -184,7 +195,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════
 if [[ "$OS" == "macOS" ]]; then
     echo -ne "Install Barked.app menu bar companion? [y/N] "
-    read -r install_app
+    read -r install_app </dev/tty
     if [[ "${install_app,,}" == "y" ]]; then
         APP_DIR="${HOME}/Applications"
         APP_BASE_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
