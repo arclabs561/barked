@@ -179,6 +179,48 @@ if [[ "$INSTALL_TYPE" == "user" ]]; then
     fi
 fi
 
+# ═══════════════════════════════════════════════════════════════════
+# OPTIONAL: Install Barked.app (macOS only)
+# ═══════════════════════════════════════════════════════════════════
+if [[ "$OS" == "macOS" ]]; then
+    echo -ne "Install Barked.app menu bar companion? [y/N] "
+    read -r install_app
+    if [[ "${install_app,,}" == "y" ]]; then
+        APP_DIR="${HOME}/Applications"
+        APP_BASE_URL="https://github.com/${GITHUB_REPO}/releases/latest/download"
+        APP_TMP="$(mktemp /tmp/barked-app-XXXXXX.tar.gz)"
+
+        echo ""
+        echo -e "${BROWN}Downloading Barked.app...${NC}"
+
+        if ! curl -fsSL --connect-timeout 10 --max-time 60 -o "$APP_TMP" "${APP_BASE_URL}/Barked.app.tar.gz"; then
+            echo -e "${RED}Warning: Failed to download Barked.app. Skipping.${NC}"
+            rm -f "$APP_TMP"
+        else
+            APP_EXPECTED="$(curl -fsSL --connect-timeout 10 --max-time 30 "${APP_BASE_URL}/Barked.app.tar.gz.sha256" 2>/dev/null | awk '{print $1}')"
+            APP_ACTUAL="$(shasum -a 256 "$APP_TMP" | awk '{print $1}')"
+
+            if [[ -z "$APP_EXPECTED" ]]; then
+                echo -e "${RED}Warning: Failed to download app checksum. Skipping.${NC}"
+                rm -f "$APP_TMP"
+            elif [[ "$APP_ACTUAL" != "$APP_EXPECTED" ]]; then
+                echo -e "${RED}Warning: App checksum verification failed. Skipping.${NC}"
+                rm -f "$APP_TMP"
+            else
+                mkdir -p "$APP_DIR"
+                if tar -xzf "$APP_TMP" -C "$APP_DIR" 2>/dev/null && [[ -d "${APP_DIR}/Barked.app" ]]; then
+                    xattr -cr "${APP_DIR}/Barked.app" 2>/dev/null
+                    echo -e "${GREEN}✓ Barked.app installed to ${APP_DIR}/Barked.app${NC}"
+                else
+                    echo -e "${RED}Warning: Failed to extract Barked.app. Skipping.${NC}"
+                fi
+                rm -f "$APP_TMP"
+            fi
+        fi
+        echo ""
+    fi
+fi
+
 echo "Usage:"
 echo "  barked                 # Run hardening wizard"
 echo "  barked --clean         # Run system cleaner"

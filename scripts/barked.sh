@@ -10353,7 +10353,14 @@ run_update_app() {
     fi
 
     # --- App bundle update ---
-    if [[ -d "/Applications/Barked.app" ]]; then
+    local app_path=""
+    if [[ -d "${HOME}/Applications/Barked.app" ]]; then
+        app_path="${HOME}/Applications"
+    elif [[ -d "/Applications/Barked.app" ]]; then
+        app_path="/Applications"
+    fi
+
+    if [[ -n "$app_path" ]]; then
         local tmp_tarball="${tmp_dir}/Barked.app.tar.gz"
         echo -e "  Downloading Barked.app v${latest}..."
         curl -fsSL --connect-timeout 5 --max-time 60 "${base_url}/Barked.app.tar.gz" -o "$tmp_tarball" 2>/dev/null || {
@@ -10384,12 +10391,12 @@ run_update_app() {
             exit 1
         fi
 
-        rm -rf /Applications/Barked.app
-        mv "${tmp_dir}/Barked.app" /Applications/Barked.app || {
-            echo -e "${RED}Failed to install Barked.app to /Applications.${NC}"
+        rm -rf "${app_path}/Barked.app"
+        mv "${tmp_dir}/Barked.app" "${app_path}/Barked.app" || {
+            echo -e "${RED}Failed to install Barked.app to ${app_path}.${NC}"
             exit 1
         }
-        xattr -cr /Applications/Barked.app 2>/dev/null
+        xattr -cr "${app_path}/Barked.app" 2>/dev/null
 
         echo -e "${GREEN}Barked.app updated to v${latest}.${NC}"
         echo "__BARKED_RELAUNCH__"
@@ -10466,23 +10473,70 @@ run_uninstall_self() {
 
     rm -f "${TMPDIR:-/tmp}/barked-update-check-$(id -u)"
 
-    # Remove Barked.app from /Applications if present
-    if [[ -d "/Applications/Barked.app" ]]; then
+    # Remove Barked.app from ~/Applications or /Applications if present
+    local app_locations=()
+    [[ -d "${HOME}/Applications/Barked.app" ]] && app_locations+=("${HOME}/Applications/Barked.app")
+    [[ -d "/Applications/Barked.app" ]] && app_locations+=("/Applications/Barked.app")
+
+    for app_loc in "${app_locations[@]}"; do
         echo ""
-        echo -ne "  ${BOLD}Also remove /Applications/Barked.app? (y/N):${NC} "
+        echo -ne "  ${BOLD}Also remove ${app_loc}? (y/N):${NC} "
         read -r confirm_app
         if [[ "${confirm_app,,}" == "y" ]]; then
-            if [[ -w "/Applications/Barked.app" ]]; then
-                rm -rf "/Applications/Barked.app"
+            if [[ -w "$app_loc" ]]; then
+                rm -rf "$app_loc"
             else
                 acquire_sudo || {
-                    echo -e "  ${RED}Cannot remove Barked.app without admin privileges.${NC}"
+                    echo -e "  ${RED}Cannot remove ${app_loc} without admin privileges.${NC}"
                     echo -e "${GREEN}barked CLI has been uninstalled.${NC}"
                     exit 0
                 }
-                run_as_root rm -rf /Applications/Barked.app
+                run_as_root rm -rf "$app_loc"
             fi
-            echo -e "  ${GREEN}Removed /Applications/Barked.app.${NC}"
+            echo -e "  ${GREEN}Removed ${app_loc}.${NC}"
+        fi
+    done
+
+    # Remove monitor daemon if installed
+    local kernel
+    kernel="$(uname -s)"
+    if [[ "$kernel" == "Darwin" ]]; then
+        local monitor_plist="${HOME}/Library/LaunchAgents/com.barked.monitor.plist"
+        if [[ -f "$monitor_plist" ]]; then
+            launchctl unload "$monitor_plist" 2>/dev/null || true
+            rm -f "$monitor_plist"
+            echo -e "  ${GREEN}Removed monitor daemon.${NC}"
+        fi
+        local clean_plist="${HOME}/Library/LaunchAgents/com.barked.scheduled-clean.plist"
+        if [[ -f "$clean_plist" ]]; then
+            launchctl unload "$clean_plist" 2>/dev/null || true
+            rm -f "$clean_plist"
+            echo -e "  ${GREEN}Removed scheduled cleaner.${NC}"
+        fi
+    elif [[ "$kernel" == "Linux" ]]; then
+        local monitor_service="${HOME}/.config/systemd/user/barked-monitor.service"
+        if [[ -f "$monitor_service" ]]; then
+            systemctl --user stop barked-monitor 2>/dev/null || true
+            systemctl --user disable barked-monitor 2>/dev/null || true
+            rm -f "$monitor_service"
+            systemctl --user daemon-reload 2>/dev/null || true
+            echo -e "  ${GREEN}Removed monitor daemon.${NC}"
+        fi
+        # Remove scheduled clean from crontab
+        if crontab -l 2>/dev/null | grep -qF "barked --clean-scheduled"; then
+            (crontab -l 2>/dev/null | grep -vF "barked --clean-scheduled") | crontab - 2>/dev/null || true
+            echo -e "  ${GREEN}Removed scheduled cleaner from crontab.${NC}"
+        fi
+    fi
+
+    # Remove config directory
+    if [[ -d "${HOME}/.config/barked" ]]; then
+        echo ""
+        echo -ne "  ${BOLD}Also remove config and logs (~/.config/barked)? (y/N):${NC} "
+        read -r confirm_config
+        if [[ "${confirm_config,,}" == "y" ]]; then
+            rm -rf "${HOME}/.config/barked"
+            echo -e "  ${GREEN}Removed ~/.config/barked.${NC}"
         fi
     fi
 
