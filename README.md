@@ -7,6 +7,10 @@ One script. No dependencies. Every change reversible.
 
 ![macOS](https://img.shields.io/badge/macOS-supported-blue) ![Linux](https://img.shields.io/badge/Linux-supported-blue) ![Windows](https://img.shields.io/badge/Windows-supported-blue)
 
+## Fork note
+
+This repository is a fork of `sth8pwd5wx-max/barked`.
+
 ## What This Does
 
 Barked wraps your system in a tough, protective layer. Pick a preset profile — Standard, High, or Paranoid — for fast deployment, or answer a short questionnaire to build a config matched to your threat model.
@@ -52,7 +56,7 @@ barked -UninstallSelf             # Windows
 ### Manual Install (from source)
 
 ```bash
-git clone https://github.com/sth8pwd5wx-max/barked
+git clone https://github.com/arclabs561/barked
 cd barked
 chmod +x scripts/barked.sh
 ./scripts/barked.sh
@@ -60,7 +64,7 @@ chmod +x scripts/barked.sh
 
 Windows:
 ```powershell
-git clone https://github.com/sth8pwd5wx-max/barked
+git clone https://github.com/arclabs561/barked
 cd barked
 .\scripts\barked.ps1
 ```
@@ -144,7 +148,7 @@ MAC address rotation, VPN kill switch, traffic obfuscation (DAITA/Tor), browser 
 - `backup-guidance` — Encrypted backup strategy
 - `border-prep` — Travel protocol, nuke checklist
 
-For platform-specific implementation details, see [docs/plans/2026-01-29-hardening-wizard-design.md](docs/plans/2026-01-29-hardening-wizard-design.md).
+Implementation lives in `scripts/` (CLI) and `gui/` (macOS menubar app).
 
 ## System Cleaner
 
@@ -250,10 +254,7 @@ barked/
 ├── gui/
 │   ├── Barked/                # SwiftUI macOS menubar app (macOS 13+)
 │   └── build.sh               # Build Barked.app bundle
-├── docs/plans/                # Design documents
-├── audits/                    # Audit reports
-├── baseline/                  # Known-good system snapshots
-└── state/                     # Hardening state files
+└── (runtime) audits/, baseline/, state/  # Created by scripts (may live under ~/.config/barked)
 ```
 
 ## Releasing
@@ -288,4 +289,4 @@ The release **must** include all four files. Without the `.sha256` files, update
 
 ## License
 
-TBD
+No license file is currently included.

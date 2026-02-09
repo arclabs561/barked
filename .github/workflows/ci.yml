@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  bash-linux:
+    name: bash (linux) - syntax + help
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        shell: bash
+        run: |
+          bash -n install.sh
+          bash -n scripts/barked.sh
+          bash -n scripts/weekly-audit.sh
+
+      - name: Help smoke
+        shell: bash
+        run: |
+          bash scripts/barked.sh --help >/dev/null
+
+  bash-macos:
+    name: bash (macos) - syntax + help
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bash 5
+        shell: bash
+        run: |
+          brew install bash
+
+      - name: Syntax check
+        shell: bash
+        run: |
+          BASH5="$(brew --prefix)/bin/bash"
+          "$BASH5" -n install.sh
+          "$BASH5" -n scripts/barked.sh
+          "$BASH5" -n scripts/weekly-audit.sh
+
+      - name: Help smoke
+        shell: bash
+        run: |
+          BASH5="$(brew --prefix)/bin/bash"
+          "$BASH5" scripts/barked.sh --help >/dev/null
+
+  pwsh-windows:
+    name: powershell (windows) - parse + help
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse check
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw install.ps1), [ref]$errors)
+          if ($errors) { throw ($errors | Out-String) }
+          $errors = $null
+          [void][System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw scripts/barked.ps1), [ref]$errors)
+          if ($errors) { throw ($errors | Out-String) }
+
+      - name: Help smoke
+        shell: pwsh
+        run: |
+          ./scripts/barked.ps1 -Help
+
